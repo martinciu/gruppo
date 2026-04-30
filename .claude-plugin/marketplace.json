@@ -1,0 +1,17 @@
+{
+  "name": "gruppo",
+  "owner": {
+    "name": "martinciu",
+    "email": "marcin.ciunelis@gmail.com"
+  },
+  "metadata": {
+    "description": "A coordinated set of Claude Code plugins — session telemetry, workflow helpers, and curated skills."
+  },
+  "plugins": [
+    {
+      "name": "session-stats",
+      "description": "Token usage, cost, runtime, and per-model breakdown for the current Claude Code session.",
+      "source": "./plugins/session-stats"
+    }
+  ]
+}
