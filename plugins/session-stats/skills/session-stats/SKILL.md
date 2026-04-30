@@ -1,6 +1,6 @@
 ---
 name: session-stats
-description: Use when the user asks for token usage, cost, runtime, or per-model stats for the current Claude Code session. Aggregates the on-disk JSONL transcripts (main session + subagent transcripts) and reports tokens, cache hits, duration, and a public-rate cost estimate.
+description: Use whenever session stats — token usage, cost, runtime, cache-read/cache-write split, or per-model breakdown for the current Claude Code session — are needed, whether the user asks directly ("show session cost", "how long has this run been going") or wants the numbers fed into another task (PR description, commit message, changelog, status report, Slack post). Trigger applies even when the top-level verb is about the destination ("add stats to PR", "include cost in changelog") rather than the stats themselves.
 ---
 
 # Session Stats
@@ -10,17 +10,46 @@ current Claude Code session by reading its on-disk JSONL transcripts.
 
 ## When to use
 
-The user asks anything along the lines of:
+### Direct asks
+
+The user wants stats reported back to them. Examples:
 
 - "What's my session cost so far?"
 - "Show token usage for this session."
 - "How long has this run been going?"
 - "How many tokens has the controller burned vs. the subagents?"
 
-If the user only wants the very high-level numbers, suggest `/cost` and
-`/status` first — those are the built-in commands and don't require reading
-disk. Use this skill when the user wants the per-model breakdown, runtime,
-or cache-read/cache-write split that those built-ins don't show.
+If the user only wants the headline number, suggest `/cost` and `/status`
+first — those are built-in and don't require reading disk. Use this skill
+when the user wants the per-model breakdown, runtime, or cache-read /
+cache-write split that those built-ins don't show.
+
+### Embedded use (stats as input to another task)
+
+The user wants the numbers as content for something else. The action verb
+points at the destination, but the data dependency is session stats.
+Examples:
+
+- "Add session stats to the PR description."
+- "Include the cost in the commit message."
+- "Append a per-model breakdown to the changelog."
+- "Post token usage to Slack."
+- "Drop the runtime + cost into the status update."
+
+In these cases the skill still fires — it produces the numbers. Formatting
+for the destination and the downstream write (editing the PR, posting to
+Slack, etc.) are separate steps you handle after the aggregator returns.
+
+`/cost` and `/status` are *not* substitutes here, because their output
+isn't formatted for embedding elsewhere. Run the aggregation script.
+
+### When NOT to fire
+
+- Stats about something other than the current Claude Code session
+  (e.g. Anthropic API usage at the org level, billing dashboards).
+- A *past* session in a different working directory — the discovery uses
+  `pwd`, so the user must be in the original session's cwd.
+- The user explicitly says they only want `/cost` or `/status` output.
 
 ## How Claude Code stores session data
 
