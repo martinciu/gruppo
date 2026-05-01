@@ -1,6 +1,6 @@
 {
   "name": "session-stats",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Token usage, cost, runtime, and per-model breakdown for the current Claude Code session.",
   "author": {
     "name": "martinciu",
