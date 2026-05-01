@@ -124,6 +124,107 @@ def family(model):
             return k
     return None
 
+
+def is_real_user_message(record):
+    if record.get("type") != "user":
+        return False
+    content = record.get("message", {}).get("content")
+    if isinstance(content, str):
+        return True
+    if isinstance(content, list):
+        return any(
+            isinstance(b, dict) and b.get("type") != "tool_result"
+            for b in content
+        )
+    return False
+
+
+def parse_ts(s):
+    if not s:
+        return None
+    return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+def controller_working_idle(path):
+    working = 0.0
+    idle = 0.0
+    turn_user_ts = None
+    last_assistant_ts = None
+    if not os.path.exists(path):
+        return working, idle
+    with open(path) as f:
+        for line in f:
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            ts = parse_ts(d.get("timestamp"))
+            if ts is None:
+                continue
+            if is_real_user_message(d):
+                if turn_user_ts is not None and last_assistant_ts is not None:
+                    working += (last_assistant_ts - turn_user_ts).total_seconds()
+                    idle += (ts - last_assistant_ts).total_seconds()
+                turn_user_ts = ts
+                last_assistant_ts = None
+            elif d.get("type") == "assistant":
+                if turn_user_ts is not None:
+                    last_assistant_ts = ts
+    if turn_user_ts is not None and last_assistant_ts is not None:
+        working += (last_assistant_ts - turn_user_ts).total_seconds()
+    return working, idle
+
+
+def subagent_span(path):
+    first = None
+    last = None
+    if not os.path.exists(path):
+        return 0.0
+    with open(path) as f:
+        for line in f:
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            ts = parse_ts(d.get("timestamp"))
+            if ts is None:
+                continue
+            if first is None or ts < first:
+                first = ts
+            if last is None or ts > last:
+                last = ts
+    if first is None or last is None or first == last:
+        return 0.0
+    return (last - first).total_seconds()
+
+
+def fmt_duration(seconds):
+    sec_int = int(round(seconds))
+    h = sec_int // 3600
+    m = (sec_int % 3600) // 60
+    s = sec_int % 60
+    minutes = sec_int / 60.0
+    return f"{h}:{m:02d}:{s:02d} ({sec_int:,}s, {minutes:.1f} min)"
+
+
+def fmt_working(working, elapsed):
+    pct = (working / elapsed * 100) if elapsed > 0 else 0
+    sec_int = int(round(working))
+    h = sec_int // 3600
+    m = (sec_int % 3600) // 60
+    s = sec_int % 60
+    minutes = sec_int / 60.0
+    return (f"{h}:{m:02d}:{s:02d} ({sec_int:,}s, {minutes:.1f} min, "
+            f"{pct:.0f}% of elapsed)")
+
+
+def fmt_rate(cost, working_seconds):
+    if working_seconds <= 0:
+        return "n/a (no working time recorded)"
+    rate = cost / (working_seconds / 3600.0)
+    return f"${rate:.2f}/hr"
+
+
 session_file = os.environ["SESSION_FILE"]
 sub_dir      = os.environ["SUB_DIR"]
 
@@ -164,18 +265,28 @@ def consume(path):
                 e["cw5"] += u.get("cache_creation_input_tokens", 0) or 0
 
 consume(session_file)
-for p in sorted(glob.glob(os.path.join(sub_dir, "agent-*.jsonl"))):
+agent_files = sorted(glob.glob(os.path.join(sub_dir, "agent-*.jsonl")))
+for p in agent_files:
     consume(p)
 
+controller_working, controller_idle = controller_working_idle(session_file)
+sub_total = 0.0
+for p in agent_files:
+    sub_total += subagent_span(p)
+working_seconds = controller_working + sub_total
+idle_seconds = controller_idle
+
 print("=== Timeline ===")
+elapsed_seconds = 0.0
 if first_ts and last_ts:
     a = datetime.fromisoformat(first_ts.replace("Z", "+00:00"))
     b = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
-    delta = b - a
+    elapsed_seconds = (b - a).total_seconds()
     print(f"  start:    {first_ts}")
     print(f"  end:      {last_ts}")
-    print(f"  duration: {delta} "
-          f"({delta.total_seconds():.0f}s, {delta.total_seconds()/60:.1f} min)")
+    print(f"  elapsed:  {fmt_duration(elapsed_seconds)}")
+    print(f"  working:  {fmt_working(working_seconds, elapsed_seconds)}")
+    print(f"  idle:     {fmt_duration(idle_seconds)}  (controller wait-for-user only)")
 print()
 
 header = (f"{'Model':<28}{'Msgs':>6}{'Input':>9}{'Output':>9}"
@@ -208,6 +319,8 @@ print()
 billed = sum(totals[k] for k in ("in", "out", "cr", "cw5", "cw1"))
 print(f"Total billed tokens: {billed:,}")
 print(f"Total cost (USD, public rates): ${total_cost:.4f}")
+print(f"Effective rate: {fmt_rate(total_cost, working_seconds)} "
+      f"(cost ÷ working time, includes parallel subagent compute)")
 PY
 ```
 
@@ -217,10 +330,14 @@ Render the script's output to the user, then add a short caveat block.
 Suggested formatting (markdown table over the raw text dump if the surface
 supports it):
 
-- **Timeline:** start / end / duration in human-friendly form.
+- **Timeline:** start / end / elapsed / working / idle in human-friendly
+  form. Elapsed is wall-clock; working excludes wait-for-user gaps and
+  includes summed subagent spans (so heavy parallelism can push
+  `working > elapsed` — keep the percentage as-is when that happens).
 - **Per-model breakdown:** messages, input, output, cache read,
   cache write 5m, cache write 1h, cost.
-- **Totals:** sum of the per-model rows.
+- **Totals:** sum of the per-model rows, plus an effective hourly rate
+  (`cost ÷ working time`).
 - **Notes:** caveats from below.
 
 ## Caveats to include with results
@@ -238,6 +355,12 @@ supports it):
   `agent-<id>.meta.json` files in the subagents directory.
 - **Live session.** If the session is still running, "end" is the timestamp of
   the most recent entry, not a true end-of-run.
+- **Working time and effective rate.** Working time = controller turn
+  time (user message → last assistant message before the next user
+  message) + total span of every subagent transcript. Subagent spans
+  are summed, not unioned, so heavy parallelism makes
+  working > elapsed. Effective rate = total cost ÷ working time. It
+  excludes wait-for-user gaps. Plan billing still applies — see above.
 
 ## Edge cases
 
@@ -260,3 +383,17 @@ supports it):
   `-snew` / `-t modified`) and silently sorts alphabetically — picking the
   wrong session. The script uses `command ls -t` to bypass aliases. Don't
   drop the `command` prefix.
+- **Zero working time.** If the transcript has no real user messages
+  *and* no subagents, working time is 0. The script prints
+  `Effective rate: n/a (no working time recorded)` instead of dividing
+  by zero. Tokens still total normally.
+- **Synthetic user records (tool results).** Records with
+  `type: "user"` whose `message.content` is a list of only
+  `tool_result` blocks are produced by Claude Code, not the human.
+  They must not close a turn. The script's `is_real_user_message`
+  helper filters them out — if you see suspiciously low working time,
+  check that this filter still matches the JSONL shape (Claude Code
+  may evolve the structure).
+- **Open turn at EOF.** If the session was killed before the last
+  turn's assistant reply, that turn contributes 0 to working time —
+  the runtime past the last observable timestamp is unobservable.
