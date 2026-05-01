@@ -324,10 +324,14 @@ Render the script's output to the user, then add a short caveat block.
 Suggested formatting (markdown table over the raw text dump if the surface
 supports it):
 
-- **Timeline:** start / end / duration in human-friendly form.
+- **Timeline:** start / end / elapsed / working / idle in human-friendly
+  form. Elapsed is wall-clock; working excludes wait-for-user gaps and
+  includes summed subagent spans (so heavy parallelism can push
+  `working > elapsed` — keep the percentage as-is when that happens).
 - **Per-model breakdown:** messages, input, output, cache read,
   cache write 5m, cache write 1h, cost.
-- **Totals:** sum of the per-model rows.
+- **Totals:** sum of the per-model rows, plus an effective hourly rate
+  (`cost ÷ working time`).
 - **Notes:** caveats from below.
 
 ## Caveats to include with results
@@ -345,6 +349,12 @@ supports it):
   `agent-<id>.meta.json` files in the subagents directory.
 - **Live session.** If the session is still running, "end" is the timestamp of
   the most recent entry, not a true end-of-run.
+- **Working time and effective rate.** Working time = controller turn
+  time (user message → last assistant message before the next user
+  message) + total span of every subagent transcript. Subagent spans
+  are summed, not unioned, so heavy parallelism makes
+  working > elapsed. Effective rate = total cost ÷ working time. It
+  excludes wait-for-user gaps. Plan billing still applies — see above.
 
 ## Edge cases
 
@@ -367,3 +377,17 @@ supports it):
   `-snew` / `-t modified`) and silently sorts alphabetically — picking the
   wrong session. The script uses `command ls -t` to bypass aliases. Don't
   drop the `command` prefix.
+- **Zero working time.** If the transcript has no real user messages
+  *and* no subagents, working time is 0. The script prints
+  `Effective rate: n/a (no working time recorded)` instead of dividing
+  by zero. Tokens still total normally.
+- **Synthetic user records (tool results).** Records with
+  `type: "user"` whose `message.content` is a list of only
+  `tool_result` blocks are produced by Claude Code, not the human.
+  They must not close a turn. The script's `is_real_user_message`
+  helper filters them out — if you see suspiciously low working time,
+  check that this filter still matches the JSONL shape (Claude Code
+  may evolve the structure).
+- **Open turn at EOF.** If the session was killed before the last
+  turn's assistant reply, that turn contributes 0 to working time —
+  the runtime past the last observable timestamp is unobservable.
