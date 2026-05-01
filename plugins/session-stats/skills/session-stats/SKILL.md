@@ -209,8 +209,13 @@ def fmt_duration(seconds):
 
 def fmt_working(working, elapsed):
     pct = (working / elapsed * 100) if elapsed > 0 else 0
-    base = fmt_duration(working)
-    return f"{base[:-1]}, {pct:.0f}% of elapsed)"
+    sec_int = int(round(working))
+    h = sec_int // 3600
+    m = (sec_int % 3600) // 60
+    s = sec_int % 60
+    minutes = sec_int / 60.0
+    return (f"{h}:{m:02d}:{s:02d} ({sec_int:,}s, {minutes:.1f} min, "
+            f"{pct:.0f}% of elapsed)")
 
 
 def fmt_rate(cost, working_seconds):
@@ -260,12 +265,13 @@ def consume(path):
                 e["cw5"] += u.get("cache_creation_input_tokens", 0) or 0
 
 consume(session_file)
-for p in sorted(glob.glob(os.path.join(sub_dir, "agent-*.jsonl"))):
+agent_files = sorted(glob.glob(os.path.join(sub_dir, "agent-*.jsonl")))
+for p in agent_files:
     consume(p)
 
 controller_working, controller_idle = controller_working_idle(session_file)
 sub_total = 0.0
-for p in sorted(glob.glob(os.path.join(sub_dir, "agent-*.jsonl"))):
+for p in agent_files:
     sub_total += subagent_span(p)
 working_seconds = controller_working + sub_total
 idle_seconds = controller_idle
@@ -280,7 +286,7 @@ if first_ts and last_ts:
     print(f"  end:      {last_ts}")
     print(f"  elapsed:  {fmt_duration(elapsed_seconds)}")
     print(f"  working:  {fmt_working(working_seconds, elapsed_seconds)}")
-    print(f"  idle:     {fmt_duration(idle_seconds)}")
+    print(f"  idle:     {fmt_duration(idle_seconds)}  (controller wait-for-user only)")
 print()
 
 header = (f"{'Model':<28}{'Msgs':>6}{'Input':>9}{'Output':>9}"
