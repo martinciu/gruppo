@@ -5,11 +5,18 @@ description: Use when the user types `/autonomo <input>` to autonomously turn a 
 
 # Autonomo
 
-<TBD task 9: one-paragraph what-this-does>
+`/autonomo <input>` takes a GitHub issue (number, URL) or a freeform task description and runs the full `superpowers` pipeline — brainstorm a spec, write a plan, execute the plan, open a PR — without prompting the user. The user is not watching: subagents make best-effort decisions on small calls and bail with `BLOCKED:` only on high-stakes ambiguity. On success it prints a PR URL; on bail it leaves the branch and a one-page report at `tmp/autonomo/<slug>-<timestamp>.md`.
 
 ## When to use
 
-<TBD task 9: trigger conditions, when NOT to use>
+Use `/autonomo` for issues that are well-scoped, single-package, and don't touch auth, billing, security, data migration, or external API contracts. Typical fits: typo fixes, internal renames, adding a small utility, fleshing out a clearly-described function, doc tweaks. Either an issue with a concrete actionable body, or a freeform one-liner you'd otherwise paste into a fresh session.
+
+Do NOT use it for:
+
+- Multi-subsystem work, anything spanning packages or services.
+- Tasks where the right answer depends on judgment calls the issue doesn't resolve (the subagents will bail).
+- Anything where you need to be in the loop — `/autonomo` is unattended by design. If you want to review the spec or plan before implementation, run the underlying `superpowers` skills directly.
+- Starting from a feature branch or a dirty tree. The skill refuses both; switch to `main`/`master` (or a clean worktree) first.
 
 ## Procedure
 
@@ -189,4 +196,12 @@ No retry. No rollback. Bail on first failure. Leave artifacts in place. The user
 
 ## Pressure scenarios
 
-<TBD task 8: brief pointer to pressure-scenarios/ folder and how to rerun>
+The autonomy directive is load-bearing prose — every word converts user-gated skills into autonomous ones, and small wording changes can over-trigger `BLOCKED:` (subagents bail on every ambiguity) or under-trigger it (subagents push past genuinely high-stakes calls). `pressure-scenarios/` holds one scenario per rule, each with a task input, a RED expectation (baseline behavior without the directive), and a GREEN expectation (behavior with the directive in place).
+
+Re-run them after any edit to the directive:
+
+1. Pick a scenario file under `pressure-scenarios/`.
+2. Dispatch a subagent (`Agent` tool, `subagent_type=general-purpose`) with the directive block from this SKILL plus the scenario's "Task input".
+3. Compare the return against the scenario's GREEN expectation. If it matches, the directive still holds for that rule; if it matches RED, the directive regressed.
+
+Each scenario lists its own "Rerun trigger" — at minimum re-run the scenarios whose rerun trigger covers the wording you touched.
