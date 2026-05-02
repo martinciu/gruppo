@@ -165,7 +165,9 @@ mkdir -p tmp/autonomo
 AUTONOMO_LOG="tmp/autonomo/${SLUG}-${RUN_TIMESTAMP}.log"
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 echo "${TS} level=info phase=preflight event=run_start branch=${BRANCH_NAME}" >> "${AUTONOMO_LOG}"
-echo "→ /autonomo · run started · log=${AUTONOMO_LOG}"
+echo "→ /autonomo · run started"
+echo "  log:        ${AUTONOMO_LOG}"
+echo "  tail live:  tail -f ${AUTONOMO_LOG}"
 ```
 
 `AUTONOMO_LOG` is referenced by every subsequent emission in this skill.
