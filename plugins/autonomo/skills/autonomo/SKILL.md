@@ -92,7 +92,23 @@ If any return starts with `BLOCKED:` or the subagent errors out, jump to the rep
 
 ### 5. Open PR or write report
 
-<TBD task 7: PR opener and report writer>
+**On success** (all three subagents returned non-`BLOCKED:`):
+
+1. Determine the remote branch name:
+   - If `BRANCH_NAME` starts with `worktree-`, strip that prefix. (The `worktrunk` / `EnterWorktree` workflow adds it locally; remote should see the clean name.)
+   - Otherwise push the local name as-is.
+2. `git push -u origin <remote-branch-name>`.
+3. `gh pr create --title "<issue title or freeform input>" --body "$(cat <<'EOF'
+   ...PR body, see template below...
+   EOF
+   )"` — single command, base branch is the repo default (usually `main`).
+4. Print the PR URL to the user. Done.
+
+If the push or `gh pr create` fails, fall through to the report writer with phase = `pr` — the branch and commits exist locally; the human can retry the PR open manually.
+
+**On bail** (any phase returned `BLOCKED:` or errored):
+
+Write `tmp/autonomo/<slug>-<RUN_TIMESTAMP>.md`. Create the directory if needed. Use the report format under "Failure handling". Do not push, do not open a PR. Print the report path to the user. Leave the branch / worktree in place.
 
 ## The autonomy directive
 
@@ -110,11 +126,66 @@ The pressure scenarios in `pressure-scenarios/` exist to verify these rules unde
 
 ## PR body template
 
-<TBD task 7: PR body template>
+```
+Closes #<ISSUE_NUMBER>
+
+## Summary
+<1-3 bullets, lifted from the execute-plan subagent's summary>
+
+## Spec
+<link to spec file in repo if committed there, else inline content>
+
+## Plan
+<link to plan file in repo if committed there, else inline content>
+
+## Assumptions
+<concatenation of every subagent's `## Assumptions` section, deduplicated>
+
+## Test plan
+<from executing-plans subagent's output>
+
+🤖 Opened by /autonomo
+```
+
+For freeform input (no `ISSUE_NUMBER`), omit the `Closes #...` line entirely. The rest of the template stays the same.
 
 ## Failure handling
 
-<TBD task 7: failure table, bail-and-report contract>
+| Phase | Failure mode | Autonomo response |
+|-------|--------------|-------------------|
+| Input parse | empty input, malformed `#NN`, unreachable URL, `gh` auth missing | exit before any branch created; print one-line cause |
+| Workspace | dirty tree, on a feature branch, branch creation fails, worktree path collision | exit before any subagent runs; print one-line cause and suggested fix |
+| Brainstorm | returns `BLOCKED:`, errors, no spec path | write report, leave artifacts, exit |
+| Plan | same | same |
+| Execute | same; OR completes but tests / lint fail | same — no auto-retry, no auto-fix |
+| PR open | push rejected, `gh pr create` fails | branch + commits exist locally; report points user at manual `gh pr create` |
+
+`BLOCKED:` is the controlled-failure marker. Returns starting with that prefix are expected; anything else is uncontrolled and flagged in the report.
+
+**Report format** (`tmp/autonomo/<slug>-<RUN_TIMESTAMP>.md`):
+
+```
+# Autonomo run blocked
+
+- Phase: <brainstorm | plan | execute | pr>
+- Issue: <#NN or freeform title>
+- Branch / worktree: <branch name or worktree path>
+- Started: <iso8601>
+- Stopped: <iso8601>
+
+## Reason
+<full subagent return value, or error trace>
+
+## Artifacts on disk
+- spec: <path or "not produced">
+- plan: <path or "not produced">
+- commits: <git log --oneline since branch base, or "none">
+
+## Suggested next step
+<best-guess hint, e.g. "Run /autonomo again after clarifying issue body" or "Resume with /superpowers:executing-plans against tmp/plans/<plan>.md">
+```
+
+No retry. No rollback. Bail on first failure. Leave artifacts in place. The user inspects the report, fixes input or environment, and re-runs.
 
 ## Pressure scenarios
 
