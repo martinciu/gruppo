@@ -46,6 +46,41 @@ echo "${TS} level=info phase=brainstorm event=dispatch_start" >> "${AUTONOMO_LOG
 
 Both writes are required. Skipping the structured write breaks tmux/headless surfaces; skipping the pretty write breaks the live session.
 
+## Canonical stage vocabulary
+
+Closed enum of stage names per phase. Subagents append structured events to `${AUTONOMO_LOG}` using these names — see autonomy directive rule 5.
+
+**Stage event format:**
+
+```
+<ts> level=info phase=<name> event=stage_start    stage=<canonical-name>
+<ts> level=info phase=<name> event=stage_progress stage=<canonical-name> done=<n> [total=<n>]
+<ts> level=info phase=<name> event=stage_end      stage=<canonical-name> [duration_s=<n>]
+```
+
+**Assumption event format** (separate from stages):
+
+```
+<ts> level=info phase=<name> event=assumption    message="<one line>"
+```
+
+**Stages per phase:**
+
+| Phase | Canonical stages |
+|-------|------------------|
+| `brainstorm` | `clarify`, `propose`, `design`, `write` |
+| `plan` | `outline`, `tasks`, `review` |
+| `execute` | `tasks` (one stage for the whole phase; emit `stage_progress done=K total=N` after each plan task is committed) |
+
+Execute uses a single stage rather than per-task sub-stages because the existing top-level `event=commit` already marks each task's completion, and the developer's motivating signal is task-level (`4/10`). The `phase=execute stage=tasks` collision with `phase=plan stage=tasks` is intentional and acceptable — `phase=` disambiguates.
+
+**Counter rules:**
+
+- `total=` is included only when the total is knowable up front. Execute knows from the plan task count. Brainstorm `clarify` does not — emits `done=N` only.
+- `done=` is monotonic within a stage.
+
+**Sub-step timing:** Tail consumers derive durations from `stage_start` / `stage_end` timestamps. `stage_end` may carry `duration_s=<n>` for convenience but is not required to.
+
 ## Procedure
 
 ### 1. Preflight
