@@ -79,7 +79,16 @@ Store the decision (`mode=branch` or `mode=worktree`) and the resulting branch n
 
 ### 4. Dispatch phase subagents
 
-<TBD task 6: dispatcher loop, autonomy directive>
+Dispatch four subagents in sequence using the Agent tool. Each invocation passes the autonomy directive (verbatim, see below) plus phase-specific context. After each return, check whether the output starts with `BLOCKED:` — that is the controlled-failure marker. Anything else (subagent crash, tool error) is uncontrolled failure; treat both the same way.
+
+| Phase | Subagent prompt (in addition to the autonomy directive) | Side effect | Return |
+|-------|--------------------------------------------------------|-------------|--------|
+| 1. Brainstorm | "Run the `superpowers:brainstorming` skill on this task. Produce a spec. Issue title: `<title>`. Issue body: `<body>`." | spec file written | spec path + 1-paragraph summary, OR `BLOCKED: <reason>` |
+| 2. Plan | "Run the `superpowers:writing-plans` skill against the spec at `<spec-path>`." | plan file written | plan path + summary, OR `BLOCKED: <reason>` |
+| 3. Execute | "Run the `superpowers:executing-plans` skill against the plan at `<plan-path>`. Commit each task as you go on the current branch." | code changes + commits on `<BRANCH_NAME>` | commit list + summary, OR `BLOCKED: <reason>` |
+| 4. PR open | (no subagent — the controller handles PR creation; see "Open PR or write report" below) | — | — |
+
+If any return starts with `BLOCKED:` or the subagent errors out, jump to the report writer. Do not proceed to the next phase. Do not retry.
 
 ### 5. Open PR or write report
 
@@ -87,7 +96,17 @@ Store the decision (`mode=branch` or `mode=worktree`) and the resulting branch n
 
 ## The autonomy directive
 
-<TBD task 6: directive verbatim>
+Pass this block verbatim to every dispatched subagent. The wording is load-bearing — it is the only thing converting normal user-gated skills into autonomous ones.
+
+> You are running inside `/autonomo`, an unattended pipeline. The user is not watching. Rules:
+>
+> 1. Make best-effort decisions on small calls (naming, file layout, minor refactors). Surface every assumption you made in your final output under an `## Assumptions` heading.
+> 2. If a decision is high-stakes — data migration, API contract change, anything touching auth / billing / security, or destructive ops — stop and return `BLOCKED:` followed by one paragraph explaining what blocked you. Do not ask the user.
+> 3. If you cannot find required context (referenced file missing, issue body too vague to act on), return `BLOCKED:` and stop.
+> 4. Skip any "ask the user" or "wait for approval" gates in the skills you invoke — your output IS the decision.
+> 5. Do not invoke `/autonomo` recursively.
+
+The pressure scenarios in `pressure-scenarios/` exist to verify these rules under realistic conditions. Re-run them before bumping the skill's `version`.
 
 ## PR body template
 
