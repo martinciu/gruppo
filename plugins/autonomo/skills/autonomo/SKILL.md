@@ -46,6 +46,41 @@ echo "${TS} level=info phase=brainstorm event=dispatch_start" >> "${AUTONOMO_LOG
 
 Both writes are required. Skipping the structured write breaks tmux/headless surfaces; skipping the pretty write breaks the live session.
 
+## Canonical stage vocabulary
+
+Closed enum of stage names per phase. Subagents append structured events to `${AUTONOMO_LOG}` using these names — see autonomy directive rule 5.
+
+**Stage event format:**
+
+```
+<ts> level=info phase=<name> event=stage_start    stage=<canonical-name>
+<ts> level=info phase=<name> event=stage_progress stage=<canonical-name> done=<n> [total=<n>]
+<ts> level=info phase=<name> event=stage_end      stage=<canonical-name> [duration_s=<n>]
+```
+
+**Assumption event format** (separate from stages):
+
+```
+<ts> level=info phase=<name> event=assumption    message="<one line>"
+```
+
+**Stages per phase:**
+
+| Phase | Canonical stages |
+|-------|------------------|
+| `brainstorm` | `clarify`, `propose`, `design`, `write` |
+| `plan` | `outline`, `tasks`, `review` |
+| `execute` | `tasks` (one stage for the whole phase; emit `stage_progress done=K total=N` after each plan task is committed) |
+
+Execute uses a single stage rather than per-task sub-stages because the existing top-level `event=commit` already marks each task's completion, and the developer's motivating signal is task-level (`4/10`). The `phase=execute stage=tasks` collision with `phase=plan stage=tasks` is intentional and acceptable — `phase=` disambiguates.
+
+**Counter rules:**
+
+- `total=` is included only when the total is knowable up front. Execute knows from the plan task count. Brainstorm `clarify` does not — emits `done=N` only.
+- `done=` is monotonic within a stage.
+
+**Sub-step timing:** Tail consumers derive durations from `stage_start` / `stage_end` timestamps. `stage_end` may carry `duration_s=<n>` for convenience but is not required to.
+
 ## Procedure
 
 ### 1. Preflight
@@ -130,7 +165,9 @@ mkdir -p tmp/autonomo
 AUTONOMO_LOG="tmp/autonomo/${SLUG}-${RUN_TIMESTAMP}.log"
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 echo "${TS} level=info phase=preflight event=run_start branch=${BRANCH_NAME}" >> "${AUTONOMO_LOG}"
-echo "→ /autonomo · run started · log=${AUTONOMO_LOG}"
+echo "→ /autonomo · run started"
+echo "  log:        ${AUTONOMO_LOG}"
+echo "  tail live:  tail -f ${AUTONOMO_LOG}"
 ```
 
 `AUTONOMO_LOG` is referenced by every subsequent emission in this skill.
@@ -212,7 +249,13 @@ If any return starts with `BLOCKED:` or the subagent errors out, jump to the rep
    ...PR body, see template below...
    EOF
    )"` — single command, base branch is the repo default (usually `main`).
-4. Print the PR URL to the user. Done.
+4. Print the PR URL to the user, then echo the log path so post-mortem has it handy:
+
+   ```bash
+   echo "  log: ${AUTONOMO_LOG}"
+   ```
+
+   Done.
 
 If the push or `gh pr create` fails, fall through to the report writer with phase = `pr` — the branch and commits exist locally; the human can retry the PR open manually.
 
@@ -230,12 +273,20 @@ Pass this block verbatim to every dispatched subagent. The wording is load-beari
 > 2. If a decision is high-stakes — data migration, **external API contract change** (HTTP routes, schema, exports crossing package boundaries), anything touching auth / billing / security, or destructive ops — stop and return `BLOCKED:` followed by one paragraph explaining what blocked you. Do not ask the user. Internal renames within a single package, including type renames, are not "API contract changes" for this rule's purposes.
 > 3. If the issue itself has no actionable scope (empty body and an unspecific title, referenced file missing entirely), return `BLOCKED:` and stop.
 > 4. Skip any "ask the user" or "wait for approval" gates in the skills you invoke — your output IS the decision.
-> 5. Emit progress to the run log as you work. At meaningful checkpoints — starting each plan task during execute, transitioning between major spec sections during brainstorm, starting each plan component during planning — append a structured event to `${AUTONOMO_LOG}` (path supplied by the controller in this prompt):
+> 5. Emit structured stage events to `${AUTONOMO_LOG}` as you work. Use the canonical stage vocabulary defined under "Canonical stage vocabulary" in the `/autonomo` SKILL for your phase.
 >
->     ```bash
->     TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
->     echo "${TS} level=info phase=<your-phase> event=progress message=\"<one line>\"" >> "${AUTONOMO_LOG}"
->     ```
+>     - `stage_start` when you enter a canonical stage:
+>
+>       ```bash
+>       TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+>       echo "${TS} level=info phase=<your-phase> event=stage_start stage=<name>" >> "${AUTONOMO_LOG}"
+>       ```
+>
+>     - `stage_progress done=K [total=N]` when you cross a counted milestone within a stage (each plan task during execute, each clarifying question during brainstorm `clarify`, etc.). Omit `total=` when not knowable up front.
+>     - `stage_end [duration_s=<n>]` when you leave the stage. `duration_s=` is optional; tail consumers derive it from timestamps when omitted.
+>     - `event=assumption message="<one line>"` the *moment* you make a best-effort scope-ambiguity call (rule 1), in addition to surfacing it in the `## Assumptions` section of your final return.
+>
+>     Free-form `event=progress message="<one line>"` is retained as an escape hatch for updates that don't fit a stage milestone.
 >
 >     Without these, tmux tailers and headless logs see silence during multi-minute phases.
 > 6. Do not invoke `/autonomo` recursively.
