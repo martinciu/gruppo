@@ -130,6 +130,8 @@ Dispatch three subagents in sequence using the Agent tool. Each invocation passe
 
 Each phase wraps the Agent call in identical emission scaffolding: a phase-start marker before dispatch, a phase-end marker after a successful return (with duration and key artifacts), or a bail marker if the return starts with `BLOCKED:`. All three surfaces (stdout pretty + structured log) are written at every emission point — see `## Run log` for the format.
 
+Each Agent prompt below inlines `AUTONOMO_LOG=<path>` literally — Agent-tool subagents don't inherit the controller's environment, so the path the directive's rule 5 references must be passed in the prompt body.
+
 #### 4.1. Brainstorm
 
 ```bash
@@ -139,7 +141,7 @@ echo "→ Phase 1/3 · brainstorm · dispatching"
 echo "${TS} level=info phase=brainstorm event=dispatch_start" >> "${AUTONOMO_LOG}"
 ```
 
-Dispatch the Agent tool with prompt: `"Run the superpowers:brainstorming skill on this task. Produce a spec. Issue title: <title>. Issue body: <body>."` plus the autonomy directive (verbatim).
+Dispatch the Agent tool with prompt: `"Run the superpowers:brainstorming skill on this task. Produce a spec. Issue title: <title>. Issue body: <body>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive (verbatim). Substitute the actual log path from the controller's `$AUTONOMO_LOG` at dispatch time.
 
 On a non-`BLOCKED:` return, parse `SPEC_PATH` and `ASSUMPTIONS_COUNT` from the subagent's output, then emit:
 
@@ -162,7 +164,7 @@ Then jump to §5 with the bail path. Do not proceed to §4.2.
 
 #### 4.2. Plan
 
-Identical scaffold to §4.1, with `phase=plan` and `Phase 2/3` in the markers. Dispatch prompt: `"Run the superpowers:writing-plans skill against the spec at <SPEC_PATH>."` plus the autonomy directive. On non-`BLOCKED:` return, parse `PLAN_PATH` and emit `plan=${PLAN_PATH}` in the dispatch_end line in place of the brainstorm `spec=…` field.
+Identical scaffold to §4.1, with `phase=plan` and `Phase 2/3` in the markers. Dispatch prompt: `"Run the superpowers:writing-plans skill against the spec at <SPEC_PATH>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive. On non-`BLOCKED:` return, parse `PLAN_PATH` and emit `plan=${PLAN_PATH}` in the dispatch_end line in place of the brainstorm `spec=…` field.
 
 #### 4.3. Execute
 
@@ -172,7 +174,7 @@ Identical scaffold to §4.1, with `phase=execute` and `Phase 3/3` in the markers
 BRANCH_BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master)
 ```
 
-Dispatch prompt: `"Run the superpowers:executing-plans skill against the plan at <PLAN_PATH>. Commit each task as you go on the current branch."` plus the autonomy directive.
+Dispatch prompt: `"Run the superpowers:executing-plans skill against the plan at <PLAN_PATH>. Commit each task as you go on the current branch. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive.
 
 On non-`BLOCKED:` return, emit the dispatch_end line, then echo each new commit:
 
@@ -217,7 +219,15 @@ Pass this block verbatim to every dispatched subagent. The wording is load-beari
 > 2. If a decision is high-stakes — data migration, **external API contract change** (HTTP routes, schema, exports crossing package boundaries), anything touching auth / billing / security, or destructive ops — stop and return `BLOCKED:` followed by one paragraph explaining what blocked you. Do not ask the user. Internal renames within a single package, including type renames, are not "API contract changes" for this rule's purposes.
 > 3. If the issue itself has no actionable scope (empty body and an unspecific title, referenced file missing entirely), return `BLOCKED:` and stop.
 > 4. Skip any "ask the user" or "wait for approval" gates in the skills you invoke — your output IS the decision.
-> 5. Do not invoke `/autonomo` recursively.
+> 5. Emit progress to the run log as you work. At meaningful checkpoints — starting each plan task during execute, transitioning between major spec sections during brainstorm, starting each plan component during planning — append a structured event to `${AUTONOMO_LOG}` (path supplied by the controller in this prompt):
+>
+>     ```bash
+>     TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+>     echo "${TS} level=info phase=<your-phase> event=progress message=\"<one line>\"" >> "${AUTONOMO_LOG}"
+>     ```
+>
+>     Without these, tmux tailers and headless logs see silence during multi-minute phases.
+> 6. Do not invoke `/autonomo` recursively.
 
 The pressure scenarios in `pressure-scenarios/` exist to verify these rules under realistic conditions. Re-run them before bumping the skill's `version`.
 
