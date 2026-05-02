@@ -12,6 +12,11 @@
       "name": "session-stats",
       "description": "Token usage, cost, runtime, and per-model breakdown for the current Claude Code session.",
       "source": "./plugins/session-stats"
+    },
+    {
+      "name": "autonomo",
+      "description": "Autonomously turn a GitHub issue into a PR by running the superpowers pipeline (brainstorm → plan → execute → PR) without user interaction.",
+      "source": "./plugins/autonomo"
     }
   ]
 }
