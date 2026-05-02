@@ -1,6 +1,6 @@
 ---
 name: autonomo
-description: Use when the user types `/autonomo <input>` to autonomously turn a GitHub issue into a pull request — accepts an issue number, issue URL, or freeform task description. Runs the full superpowers pipeline (brainstorm → plan → execute → PR) without user interaction. For relatively simple tasks; refuses to proceed on a feature branch or with a dirty tree.
+description: Use when the user types `/autonomo <input>` to autonomously turn a GitHub issue into a pull request — accepts an issue number, issue URL, or freeform task description. Runs the full superpowers pipeline (brainstorm → plan → execute → PR) without user interaction. For relatively simple tasks; reuses the current worktree or feature branch when clean, refuses on a dirty tree or a branch already carrying commits.
 ---
 
 # Autonomo
@@ -16,7 +16,7 @@ Do NOT use it for:
 - Multi-subsystem work, anything spanning packages or services.
 - Tasks where the right answer depends on judgment calls the issue doesn't resolve (the subagents will bail).
 - Anything where you need to be in the loop — `/autonomo` is unattended by design. If you want to review the spec or plan before implementation, run the underlying `superpowers` skills directly.
-- Starting from a feature branch or a dirty tree. The skill refuses both; switch to `main`/`master` (or a clean worktree) first.
+- Starting from a dirty tree, or from a feature branch that already has commits ahead of `main`/`master`. The skill refuses both; clean up first or switch to `main`/`master` / a freshly cut branch.
 
 ## Run log
 
@@ -99,18 +99,29 @@ Inspect git state, decide where the work goes. Refuse to start from a non-clean 
 
 Capture `RUN_TIMESTAMP=$(date +%s)` once at this point — used later for the report filename if the run bails.
 
-**Decision table:**
+**Decision table** (evaluated top-down — first matching row wins):
 
 | Current state | Action |
 |---------------|--------|
 | On `main` / `master`, working tree clean | `git checkout -b autonomo/<slug>` |
-| Inside a worktree, working tree clean | If `wt` CLI is available, `wt new autonomo/<slug>`. Else `git worktree add ../<slug> -b autonomo/<slug>` and `cd` into it. |
-| On a feature branch (any branch other than `main`/`master`, not in a worktree) | exit `BLOCKED: not running on a feature branch; switch to main or a clean worktree first` |
+| Inside a worktree, working tree clean | Reuse the current worktree: `git checkout -b autonomo/<slug>` in place. Do not spawn a sibling worktree. |
+| On a feature branch with no commits ahead of `main`/`master`, working tree clean | Reuse the current branch as-is. Do not create `autonomo/<slug>`; the existing branch name is what gets pushed. |
+| On a feature branch with commits ahead of `main`/`master`, working tree clean | exit `BLOCKED: feature branch already has commits; start from main or a fresh branch` |
 | Working tree dirty (any uncommitted changes) | exit `BLOCKED: working tree dirty; stash or commit first` |
 
 **Detecting "inside a worktree":** `git rev-parse --git-dir` ends in `/.git/worktrees/<name>` for linked worktrees; for the main repo it's `.git`. Use this to distinguish.
 
-Store the decision (`mode=branch` or `mode=worktree`) and the resulting branch name as `BRANCH_NAME` — the PR opener step uses both.
+**Detecting "no commits ahead of default":**
+
+```bash
+DEFAULT=$(git symbolic-ref refs/remotes/origin/HEAD --short 2>/dev/null | sed 's|^origin/||')
+DEFAULT=${DEFAULT:-main}
+if [ -z "$(git log "origin/${DEFAULT}..HEAD" --oneline)" ]; then
+  # branch has no commits ahead of default — safe to reuse
+fi
+```
+
+Store the resulting branch name as `BRANCH_NAME` — the PR opener step uses it. In the new-branch cases this is `autonomo/<slug>`; in the reuse-existing-branch case it's the current branch name.
 
 **Open the run log.** Once `SLUG` and `RUN_TIMESTAMP` exist and the branch is created, open the log file. Subsequent emissions (phase markers, artifact echoes, errors) write to both stdout and this file:
 
@@ -261,7 +272,7 @@ For freeform input (no `ISSUE_NUMBER`), omit the `Closes #...` line entirely. Th
 | Phase | Failure mode | Autonomo response |
 |-------|--------------|-------------------|
 | Input parse | empty input, malformed `#NN`, unreachable URL, `gh` auth missing | exit before any branch created; print one-line cause |
-| Workspace | dirty tree, on a feature branch, branch creation fails, worktree path collision | exit before any subagent runs; print one-line cause and suggested fix |
+| Workspace | dirty tree, branch already has commits ahead of default, branch creation fails | exit before any subagent runs; print one-line cause and suggested fix |
 | Brainstorm | returns `BLOCKED:`, errors, no spec path | write report, leave artifacts, exit |
 | Plan | same | same |
 | Execute | same; OR completes but tests / lint fail | same — no auto-retry, no auto-fix |
