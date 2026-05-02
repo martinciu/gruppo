@@ -1,6 +1,6 @@
 {
   "name": "autonomo",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Autonomously turn a GitHub issue into a PR by running the superpowers pipeline (brainstorm → plan → execute → PR) without user interaction.",
   "author": {
     "name": "martinciu",
