@@ -201,6 +201,14 @@ echo "  tail live:  tail -f ${AUTONOMO_LOG}"
 
 `AUTONOMO_LOG` is referenced by every subsequent emission in this skill.
 
+**Initialize the controller's TodoWrite phase list.** Once the run log is open, set up the top-level 3-item progress display (see "## TodoWrite progress display"). Call the TodoWrite tool with three items, all `pending`:
+
+- `Phase 1/3: Brainstorm`
+- `Phase 2/3: Plan`
+- `Phase 3/3: Execute`
+
+This list is updated between phases by §4's emission scaffolding (mark `in_progress` before each dispatch, `completed` on non-`BLOCKED:` return).
+
 ### 4. Dispatch phase subagents
 
 Dispatch three subagents in sequence using the Agent tool. Each invocation passes the autonomy directive (verbatim, see below) plus phase-specific context. After each return, check whether the output starts with `BLOCKED:` — that is the controlled-failure marker. Anything else (subagent crash, tool error) is uncontrolled failure; treat both the same way. The PR-open phase is handled by the controller directly — see §5.
