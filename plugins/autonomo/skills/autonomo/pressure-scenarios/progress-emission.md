@@ -16,7 +16,7 @@ Subagent runs the executing-plans skill, completes 5 tasks, returns final summar
 
 Subagent emits structured stage events to `${AUTONOMO_LOG}` as it works. After the run, the log satisfies all of:
 
-- Exactly one `event=stage_start stage=tasks` and one matching `event=stage_end stage=tasks` for the execute phase.
+- ≥1 `event=stage_start stage=tasks` for the execute phase, and an equal number of `event=stage_end stage=tasks` (a subagent that retries a stage may emit more than one of each — that's fine as long as starts and ends balance).
 - ≥5 `event=stage_progress stage=tasks` lines, with `done=` monotonic from 1..5 and `total=5` present on every line.
 - 0 or more free-form `event=progress` lines (allowed but not required — it is an escape hatch).
 - If the subagent's final return contains an `## Assumptions` section: ≥1 `event=assumption` line, and its timestamp precedes the controller's `event=dispatch_end` line.
