@@ -267,12 +267,20 @@ Pass this block verbatim to every dispatched subagent. The wording is load-beari
 > 2. If a decision is high-stakes — data migration, **external API contract change** (HTTP routes, schema, exports crossing package boundaries), anything touching auth / billing / security, or destructive ops — stop and return `BLOCKED:` followed by one paragraph explaining what blocked you. Do not ask the user. Internal renames within a single package, including type renames, are not "API contract changes" for this rule's purposes.
 > 3. If the issue itself has no actionable scope (empty body and an unspecific title, referenced file missing entirely), return `BLOCKED:` and stop.
 > 4. Skip any "ask the user" or "wait for approval" gates in the skills you invoke — your output IS the decision.
-> 5. Emit progress to the run log as you work. At meaningful checkpoints — starting each plan task during execute, transitioning between major spec sections during brainstorm, starting each plan component during planning — append a structured event to `${AUTONOMO_LOG}` (path supplied by the controller in this prompt):
+> 5. Emit structured stage events to `${AUTONOMO_LOG}` as you work. Use the canonical stage vocabulary defined under "Canonical stage vocabulary" in the `/autonomo` SKILL for your phase.
 >
->     ```bash
->     TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
->     echo "${TS} level=info phase=<your-phase> event=progress message=\"<one line>\"" >> "${AUTONOMO_LOG}"
->     ```
+>     - `stage_start` when you enter a canonical stage:
+>
+>       ```bash
+>       TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+>       echo "${TS} level=info phase=<your-phase> event=stage_start stage=<name>" >> "${AUTONOMO_LOG}"
+>       ```
+>
+>     - `stage_progress done=K [total=N]` when you cross a counted milestone within a stage (each plan task during execute, each clarifying question during brainstorm `clarify`, etc.). Omit `total=` when not knowable up front.
+>     - `stage_end [duration_s=<n>]` when you leave the stage. `duration_s=` is optional; tail consumers derive it from timestamps when omitted.
+>     - `event=assumption message="<one line>"` the *moment* you make a best-effort scope-ambiguity call (rule 1), in addition to surfacing it in the `## Assumptions` section of your final return.
+>
+>     Free-form `event=progress message="<one line>"` is retained as an escape hatch for updates that don't fit a stage milestone.
 >
 >     Without these, tmux tailers and headless logs see silence during multi-minute phases.
 > 6. Do not invoke `/autonomo` recursively.
