@@ -39,7 +39,18 @@ The `superpowers` plugin is also a hard requirement, but plugin presence isn't s
 
 ### 2. Parse input
 
-<TBD task 4: input parser>
+The `<input>` argument from `/autonomo <input>` resolves to one of three shapes. The controller picks based on syntax:
+
+| Shape | Match | Resolution |
+|-------|-------|------------|
+| Issue number | `^\d+$` or `^#\d+$` | `gh issue view <N> --json title,body,number` against the current repo |
+| Issue URL | matches `github.com/.+/issues/\d+` | `gh issue view <url> --json title,body,number` |
+| Freeform | anything else (non-empty) | `{title: <input>, body: "", source: "freeform"}` — no `gh` call |
+| Empty | `<input>` is empty / whitespace only | exit `BLOCKED: usage: /autonomo <issue-number \| issue-url \| "task description">` |
+
+Store the resolved task object as `TASK` for the rest of the run. For issue inputs, also store `ISSUE_NUMBER` (used later in the PR body's `Closes #N` line). For freeform, leave `ISSUE_NUMBER` empty.
+
+If `gh issue view` fails (network, auth, nonexistent issue, no read access), surface the error one-line and exit. Do not proceed.
 
 ### 3. Pick workspace
 
