@@ -54,7 +54,28 @@ If `gh issue view` fails (network, auth, nonexistent issue, no read access), sur
 
 ### 3. Pick workspace
 
-<TBD task 5: workspace manager>
+Inspect git state, decide where the work goes. Refuse to start from a non-clean baseline.
+
+**Slug derivation.** Compute `<slug>` once, used for both the branch name and the report filename:
+
+- For issue inputs: kebab-case the issue title, ASCII-only, max 40 chars (truncate at the last word boundary inside the limit).
+- For freeform inputs: `auto-<unix-timestamp>`.
+- If the slugified issue title comes out empty (emoji-only, all non-Latin script): fall back to `auto-<unix-timestamp>`.
+
+Capture `RUN_TIMESTAMP=$(date +%s)` once at this point — used later for the report filename if the run bails.
+
+**Decision table:**
+
+| Current state | Action |
+|---------------|--------|
+| On `main` / `master`, working tree clean | `git checkout -b autonomo/<slug>` |
+| Inside a worktree, working tree clean | If `wt` CLI is available, `wt new autonomo/<slug>`. Else `git worktree add ../<slug> -b autonomo/<slug>` and `cd` into it. |
+| On a feature branch (any branch other than `main`/`master`, not in a worktree) | exit `BLOCKED: not running on a feature branch; switch to main or a clean worktree first` |
+| Working tree dirty (any uncommitted changes) | exit `BLOCKED: working tree dirty; stash or commit first` |
+
+**Detecting "inside a worktree":** `git rev-parse --git-dir` ends in `/.git/worktrees/<name>` for linked worktrees; for the main repo it's `.git`. Use this to distinguish.
+
+Store the decision (`mode=branch` or `mode=worktree`) and the resulting branch name as `BRANCH_NAME` — the PR opener step uses both.
 
 ### 4. Dispatch phase subagents
 
