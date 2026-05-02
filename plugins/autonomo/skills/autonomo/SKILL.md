@@ -319,6 +319,7 @@ Pass this block verbatim to every dispatched subagent. The wording is load-beari
 >
 >     Without these, tmux tailers and headless logs see silence during multi-minute phases.
 > 6. Do not invoke `/autonomo` recursively.
+> 7. Render your phase's progress as a TodoWrite list using the items defined under "## TodoWrite progress display" in the `/autonomo` SKILL — use those item subjects exactly, marking each `in_progress` when you enter it and `completed` when you finish. Override the default TodoWrite usage of any inner skill you invoke. The structured log emissions in rule 5 are still required (the log serves tail / post-mortem consumers; TodoWrite is the live display).
 
 The pressure scenarios in `pressure-scenarios/` exist to verify these rules under realistic conditions. Re-run them before bumping the skill's `version`.
 
