@@ -81,6 +81,35 @@ Execute uses a single stage rather than per-task sub-stages because the existing
 
 **Sub-step timing:** Tail consumers derive durations from `stage_start` / `stage_end` timestamps. `stage_end` may carry `duration_s=<n>` for convenience but is not required to.
 
+## TodoWrite progress display
+
+Subagents and the controller render their progress as TodoWrite lists for the live UI display, alongside the structured log emissions in autonomy directive rule 5. The log is for tail / post-mortem (machine-readable); TodoWrite is the live display the user watches.
+
+Two surfaces produce TodoWrite lists during a run:
+
+- The **controller** renders a 3-item top-level phase list once at the end of §3 ("Pick workspace"), then updates it between phases (see §4 emission scaffolding).
+- Each **subagent** renders its own phase-specific list while it runs. The Agent tool's nested view shows the subagent's TodoWrite while the phase is active; between phases the controller's list is what the user sees.
+
+**Controller list** (3 items, fixed):
+
+| Subject | Lifecycle |
+|---------|-----------|
+| `Phase 1/3: Brainstorm` | `pending` initially → `in_progress` before §4.1 dispatch → `completed` on non-`BLOCKED:` return |
+| `Phase 2/3: Plan` | `pending` initially → `in_progress` before §4.2 dispatch → `completed` on non-`BLOCKED:` return |
+| `Phase 3/3: Execute` | `pending` initially → `in_progress` before §4.3 dispatch → `completed` on non-`BLOCKED:` return |
+
+On a `BLOCKED:` return, the in-progress phase item is left untouched. TodoWrite has no `failed` state — the existing `✗ Phase K/3 · BLOCKED · <reason>` stdout line and `event=blocked` log entry carry the failure signal.
+
+**Subagent lists** (per phase):
+
+| Phase | Items |
+|-------|-------|
+| `brainstorm` | `Clarify scope`, `Propose approaches`, `Design the spec`, `Write spec to disk` (4 items, one per canonical stage) |
+| `plan` | `Outline plan structure`, `Enumerate plan tasks`, `Self-review plan` (3 items, one per canonical stage) |
+| `execute` | One item per task in the plan; subject = the plan's task title verbatim (e.g. `Task 1: Add --flag option`) |
+
+Each subagent marks its own items `in_progress` when entering them, `completed` when finishing. Brainstorm and plan **override** the default TodoWrite usage of `superpowers:brainstorming` / `superpowers:writing-plans` (which would otherwise render their own internal checklists). Execute **aligns** with `superpowers:executing-plans`' natural one-task-per-item behavior, so no override is needed there.
+
 ## Procedure
 
 ### 1. Preflight
