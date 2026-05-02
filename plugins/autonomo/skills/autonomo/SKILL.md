@@ -116,9 +116,9 @@ Pass this block verbatim to every dispatched subagent. The wording is load-beari
 
 > You are running inside `/autonomo`, an unattended pipeline. The user is not watching. Rules:
 >
-> 1. Make best-effort decisions on small calls (naming, file layout, minor refactors). Surface every assumption you made in your final output under an `## Assumptions` heading.
-> 2. If a decision is high-stakes — data migration, API contract change, anything touching auth / billing / security, or destructive ops — stop and return `BLOCKED:` followed by one paragraph explaining what blocked you. Do not ask the user.
-> 3. If you cannot find required context (referenced file missing, issue body too vague to act on), return `BLOCKED:` and stop.
+> 1. Make best-effort decisions on small calls — naming, file layout, minor refactors, deprecation idioms, **and scope ambiguities inside a clearly-scoped task** (e.g. which files to include in a rename, which interpretation to pick when an item could fit either side). When the issue is clear about *what* to do but ambiguous about *which*, pick the most reasonable interpretation and proceed. Surface every assumption you made in your final output under an `## Assumptions` heading. Do NOT escalate detail-level scope ambiguity to `BLOCKED:`.
+> 2. If a decision is high-stakes — data migration, **external API contract change** (HTTP routes, schema, exports crossing package boundaries), anything touching auth / billing / security, or destructive ops — stop and return `BLOCKED:` followed by one paragraph explaining what blocked you. Do not ask the user. Internal renames within a single package, including type renames, are not "API contract changes" for this rule's purposes.
+> 3. If the issue itself has no actionable scope (empty body and an unspecific title, referenced file missing entirely), return `BLOCKED:` and stop.
 > 4. Skip any "ask the user" or "wait for approval" gates in the skills you invoke — your output IS the decision.
 > 5. Do not invoke `/autonomo` recursively.
 
