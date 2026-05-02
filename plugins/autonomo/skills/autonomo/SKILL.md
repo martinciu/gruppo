@@ -15,7 +15,27 @@ description: Use when the user types `/autonomo <input>` to autonomously turn a 
 
 ### 1. Preflight
 
-<TBD task 3: env recursion guard, dependency check>
+**Recursion guard.** Before doing anything else, check the `AUTONOMO_RUNNING` environment variable.
+
+```bash
+if [ "${AUTONOMO_RUNNING:-0}" = "1" ]; then
+  echo "BLOCKED: /autonomo invoked recursively. Inner subagents must not call /autonomo."
+  exit 1
+fi
+export AUTONOMO_RUNNING=1
+```
+
+Set `AUTONOMO_RUNNING=1` for the rest of the run. Subagents inherit it; if any of them tries to invoke `/autonomo`, that nested run sees the variable set and refuses.
+
+**Dependency check.** Confirm `gh` is authenticated and `git` is available. Either missing → exit before any branch is created.
+
+```bash
+command -v gh >/dev/null 2>&1 || { echo "BLOCKED: gh CLI not installed"; exit 1; }
+command -v git >/dev/null 2>&1 || { echo "BLOCKED: git not installed"; exit 1; }
+gh auth status >/dev/null 2>&1 || { echo "BLOCKED: gh not authenticated; run 'gh auth login'"; exit 1; }
+```
+
+The `superpowers` plugin is also a hard requirement, but plugin presence isn't shell-checkable — the dispatcher will surface it when the first Agent tool call fails.
 
 ### 2. Parse input
 
