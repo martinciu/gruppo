@@ -18,6 +18,34 @@ Do NOT use it for:
 - Anything where you need to be in the loop — `/autonomo` is unattended by design. If you want to review the spec or plan before implementation, run the underlying `superpowers` skills directly.
 - Starting from a feature branch or a dirty tree. The skill refuses both; switch to `main`/`master` (or a clean worktree) first.
 
+## Run log
+
+Every `/autonomo` run writes a structured log to `tmp/autonomo/<slug>-<RUN_TIMESTAMP>.log`. The log opens at the start of the run (not only on bail) and grows monotonically. It serves three audiences with one artifact:
+
+- **Live main session** — the controller prints pretty lines to stdout in parallel; the user sees those.
+- **tmux tailer** — `tail -f tmp/autonomo/<slug>-<RUN_TIMESTAMP>.log` from another pane shows structured events as they happen.
+- **Headless / post-mortem** — the structured format is grep-friendly for after-the-fact inspection. The on-bail report (see "Failure handling") becomes a derived summary; the log is the canonical artifact.
+
+**Stdout format (pretty):**
+
+- `→ Phase K/3 · <name> · <verb>` — start / in-progress
+- `✓ Phase K/3 · <name> · <duration> · <key=value …>` — completion
+- `✗ Phase K/3 · <name> · BLOCKED · <reason>` — bail
+
+**Log file format (structured):**
+
+Each line is `<iso8601-utc> level=<info|warn|error> phase=<name> event=<verb> [key=value …]`. One event per line.
+
+**Emission pattern.** At every emission point, write both surfaces:
+
+```bash
+TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "→ Phase 1/3 · brainstorm · dispatching"
+echo "${TS} level=info phase=brainstorm event=dispatch_start" >> "${AUTONOMO_LOG}"
+```
+
+Both writes are required. Skipping the structured write breaks tmux/headless surfaces; skipping the pretty write breaks the live session.
+
 ## Procedure
 
 ### 1. Preflight
@@ -84,16 +112,80 @@ Capture `RUN_TIMESTAMP=$(date +%s)` once at this point — used later for the re
 
 Store the decision (`mode=branch` or `mode=worktree`) and the resulting branch name as `BRANCH_NAME` — the PR opener step uses both.
 
+**Open the run log.** Once `SLUG` and `RUN_TIMESTAMP` exist and the branch is created, open the log file. Subsequent emissions (phase markers, artifact echoes, errors) write to both stdout and this file:
+
+```bash
+mkdir -p tmp/autonomo
+AUTONOMO_LOG="tmp/autonomo/${SLUG}-${RUN_TIMESTAMP}.log"
+TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "${TS} level=info phase=preflight event=run_start branch=${BRANCH_NAME}" >> "${AUTONOMO_LOG}"
+echo "→ /autonomo · run started · log=${AUTONOMO_LOG}"
+```
+
+`AUTONOMO_LOG` is referenced by every subsequent emission in this skill.
+
 ### 4. Dispatch phase subagents
 
-Dispatch four subagents in sequence using the Agent tool. Each invocation passes the autonomy directive (verbatim, see below) plus phase-specific context. After each return, check whether the output starts with `BLOCKED:` — that is the controlled-failure marker. Anything else (subagent crash, tool error) is uncontrolled failure; treat both the same way.
+Dispatch three subagents in sequence using the Agent tool. Each invocation passes the autonomy directive (verbatim, see below) plus phase-specific context. After each return, check whether the output starts with `BLOCKED:` — that is the controlled-failure marker. Anything else (subagent crash, tool error) is uncontrolled failure; treat both the same way. The PR-open phase is handled by the controller directly — see §5.
 
-| Phase | Subagent prompt (in addition to the autonomy directive) | Side effect | Return |
-|-------|--------------------------------------------------------|-------------|--------|
-| 1. Brainstorm | "Run the `superpowers:brainstorming` skill on this task. Produce a spec. Issue title: `<title>`. Issue body: `<body>`." | spec file written | spec path + 1-paragraph summary, OR `BLOCKED: <reason>` |
-| 2. Plan | "Run the `superpowers:writing-plans` skill against the spec at `<spec-path>`." | plan file written | plan path + summary, OR `BLOCKED: <reason>` |
-| 3. Execute | "Run the `superpowers:executing-plans` skill against the plan at `<plan-path>`. Commit each task as you go on the current branch." | code changes + commits on `<BRANCH_NAME>` | commit list + summary, OR `BLOCKED: <reason>` |
-| 4. PR open | (no subagent — the controller handles PR creation; see "Open PR or write report" below) | — | — |
+Each phase wraps the Agent call in identical emission scaffolding: a phase-start marker before dispatch, a phase-end marker after a successful return (with duration and key artifacts), or a bail marker if the return starts with `BLOCKED:`. All three surfaces (stdout pretty + structured log) are written at every emission point — see `## Run log` for the format.
+
+Each Agent prompt below inlines `AUTONOMO_LOG=<path>` literally — Agent-tool subagents don't inherit the controller's environment, so the path the directive's rule 5 references must be passed in the prompt body.
+
+#### 4.1. Brainstorm
+
+```bash
+PHASE_START=$(date +%s)
+TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "→ Phase 1/3 · brainstorm · dispatching"
+echo "${TS} level=info phase=brainstorm event=dispatch_start" >> "${AUTONOMO_LOG}"
+```
+
+Dispatch the Agent tool with prompt: `"Run the superpowers:brainstorming skill on this task. Produce a spec. Issue title: <title>. Issue body: <body>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive (verbatim). Substitute the actual log path from the controller's `$AUTONOMO_LOG` at dispatch time.
+
+On a non-`BLOCKED:` return, parse `SPEC_PATH` and `ASSUMPTIONS_COUNT` from the subagent's output, then emit:
+
+```bash
+PHASE_END=$(date +%s); DURATION=$((PHASE_END - PHASE_START))
+TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "✓ Phase 1/3 · brainstorm · ${DURATION}s · spec=${SPEC_PATH} · ${ASSUMPTIONS_COUNT} assumptions"
+echo "${TS} level=info phase=brainstorm event=dispatch_end duration_s=${DURATION} spec=${SPEC_PATH} assumptions=${ASSUMPTIONS_COUNT}" >> "${AUTONOMO_LOG}"
+```
+
+If the return starts with `BLOCKED:`, emit instead:
+
+```bash
+TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "✗ Phase 1/3 · brainstorm · BLOCKED · <reason>"
+echo "${TS} level=warn phase=brainstorm event=blocked reason=\"<reason>\"" >> "${AUTONOMO_LOG}"
+```
+
+Then jump to §5 with the bail path. Do not proceed to §4.2.
+
+#### 4.2. Plan
+
+Identical scaffold to §4.1, with `phase=plan` and `Phase 2/3` in the markers. Dispatch prompt: `"Run the superpowers:writing-plans skill against the spec at <SPEC_PATH>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive. On non-`BLOCKED:` return, parse `PLAN_PATH` and emit `plan=${PLAN_PATH}` in the dispatch_end line in place of the brainstorm `spec=…` field.
+
+#### 4.3. Execute
+
+Identical scaffold to §4.1, with `phase=execute` and `Phase 3/3` in the markers. Capture the branch base before dispatch:
+
+```bash
+BRANCH_BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master)
+```
+
+Dispatch prompt: `"Run the superpowers:executing-plans skill against the plan at <PLAN_PATH>. Commit each task as you go on the current branch. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive.
+
+On non-`BLOCKED:` return, emit the dispatch_end line, then echo each new commit:
+
+```bash
+for sha in $(git log "${BRANCH_BASE}..HEAD" --format='%H'); do
+  msg=$(git show --no-patch --format='%s' "$sha")
+  TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  echo "  · commit ${sha:0:7} · ${msg}"
+  echo "${TS} level=info phase=execute event=commit sha=${sha} subject=\"${msg}\"" >> "${AUTONOMO_LOG}"
+done
+```
 
 If any return starts with `BLOCKED:` or the subagent errors out, jump to the report writer. Do not proceed to the next phase. Do not retry.
 
@@ -127,7 +219,15 @@ Pass this block verbatim to every dispatched subagent. The wording is load-beari
 > 2. If a decision is high-stakes — data migration, **external API contract change** (HTTP routes, schema, exports crossing package boundaries), anything touching auth / billing / security, or destructive ops — stop and return `BLOCKED:` followed by one paragraph explaining what blocked you. Do not ask the user. Internal renames within a single package, including type renames, are not "API contract changes" for this rule's purposes.
 > 3. If the issue itself has no actionable scope (empty body and an unspecific title, referenced file missing entirely), return `BLOCKED:` and stop.
 > 4. Skip any "ask the user" or "wait for approval" gates in the skills you invoke — your output IS the decision.
-> 5. Do not invoke `/autonomo` recursively.
+> 5. Emit progress to the run log as you work. At meaningful checkpoints — starting each plan task during execute, transitioning between major spec sections during brainstorm, starting each plan component during planning — append a structured event to `${AUTONOMO_LOG}` (path supplied by the controller in this prompt):
+>
+>     ```bash
+>     TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+>     echo "${TS} level=info phase=<your-phase> event=progress message=\"<one line>\"" >> "${AUTONOMO_LOG}"
+>     ```
+>
+>     Without these, tmux tailers and headless logs see silence during multi-minute phases.
+> 6. Do not invoke `/autonomo` recursively.
 
 The pressure scenarios in `pressure-scenarios/` exist to verify these rules under realistic conditions. Re-run them before bumping the skill's `version`.
 
@@ -177,6 +277,7 @@ For freeform input (no `ISSUE_NUMBER`), omit the `Closes #...` line entirely. Th
 - Phase: <brainstorm | plan | execute | pr>
 - Issue: <#NN or freeform title>
 - Branch / worktree: <branch name or worktree path>
+- Log: `tmp/autonomo/<slug>-<RUN_TIMESTAMP>.log` (full structured event history)
 - Started: <iso8601>
 - Stopped: <iso8601>
 
@@ -192,7 +293,7 @@ For freeform input (no `ISSUE_NUMBER`), omit the `Closes #...` line entirely. Th
 <best-guess hint, e.g. "Run /autonomo again after clarifying issue body" or "Resume with /superpowers:executing-plans against tmp/plans/<plan>.md">
 ```
 
-No retry. No rollback. Bail on first failure. Leave artifacts in place. The user inspects the report, fixes input or environment, and re-runs.
+No retry. No rollback. Bail on first failure. Leave artifacts in place — the report is a one-page summary, the log is the full event history. The user inspects either, fixes input or environment, and re-runs.
 
 ## Pressure scenarios
 
