@@ -249,7 +249,7 @@ If any return starts with `BLOCKED:` or the subagent errors out, jump to the rep
    ...PR body, see template below...
    EOF
    )"` — single command, base branch is the repo default (usually `main`).
-4. Print the PR URL to the user. Done.
+4. Print the PR URL to the user. Then echo `  log: ${AUTONOMO_LOG}` so the log path is handy for post-mortem. Done.
 
 If the push or `gh pr create` fails, fall through to the report writer with phase = `pr` — the branch and commits exist locally; the human can retry the PR open manually.
 
