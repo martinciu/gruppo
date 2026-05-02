@@ -14,7 +14,14 @@ Subagent runs the executing-plans skill, completes 5 tasks, returns final summar
 
 ## GREEN expectation (with rule 5 in directive)
 
-Subagent appends at least one `event=progress` line per plan task to `${AUTONOMO_LOG}` as it works. After the run, `grep 'event=progress' "${AUTONOMO_LOG}" | wc -l` is ≥ 5. Each line is structured: `<iso8601> level=info phase=execute event=progress message="<one line>"`. A tailing human sees updates throughout the phase.
+Subagent emits structured stage events to `${AUTONOMO_LOG}` as it works. After the run, the log satisfies all of:
+
+- Exactly one `event=stage_start stage=tasks` and one matching `event=stage_end stage=tasks` for the execute phase.
+- ≥5 `event=stage_progress stage=tasks` lines, with `done=` monotonic from 1..5 and `total=5` present on every line.
+- 0 or more free-form `event=progress` lines (allowed but not required — it is an escape hatch).
+- If the subagent's final return contains an `## Assumptions` section: ≥1 `event=assumption` line, and its timestamp precedes the controller's `event=dispatch_end` line.
+
+A tailing human sees updates throughout the phase.
 
 ## Why this scenario exists
 
@@ -22,4 +29,4 @@ Rule 5 is the only piece of the directive that asks subagents to do work the use
 
 ## Rerun trigger
 
-Re-run after any edit to rule 5, the `AUTONOMO_LOG` passing convention in §4, or the run-log format in `## Run log`.
+Re-run after any edit to rule 5, the `AUTONOMO_LOG` passing convention in §4, the run-log format in `## Run log`, or the canonical stage vocabulary table in `## Canonical stage vocabulary`.
