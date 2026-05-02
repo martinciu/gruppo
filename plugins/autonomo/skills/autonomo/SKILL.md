@@ -226,6 +226,8 @@ echo "→ Phase 1/3 · brainstorm · dispatching"
 echo "${TS} level=info phase=brainstorm event=dispatch_start" >> "${AUTONOMO_LOG}"
 ```
 
+Then call the TodoWrite tool to mark `Phase 1/3: Brainstorm` as `in_progress`.
+
 Dispatch the Agent tool with prompt: `"Run the superpowers:brainstorming skill on this task. Produce a spec. Issue title: <title>. Issue body: <body>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive (verbatim). Substitute the actual log path from the controller's `$AUTONOMO_LOG` at dispatch time.
 
 On a non-`BLOCKED:` return, parse `SPEC_PATH` and `ASSUMPTIONS_COUNT` from the subagent's output, then emit:
@@ -236,6 +238,8 @@ TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 echo "✓ Phase 1/3 · brainstorm · ${DURATION}s · spec=${SPEC_PATH} · ${ASSUMPTIONS_COUNT} assumptions"
 echo "${TS} level=info phase=brainstorm event=dispatch_end duration_s=${DURATION} spec=${SPEC_PATH} assumptions=${ASSUMPTIONS_COUNT}" >> "${AUTONOMO_LOG}"
 ```
+
+Then call the TodoWrite tool to mark `Phase 1/3: Brainstorm` as `completed`.
 
 If the return starts with `BLOCKED:`, emit instead:
 
@@ -249,11 +253,11 @@ Then jump to §5 with the bail path. Do not proceed to §4.2.
 
 #### 4.2. Plan
 
-Identical scaffold to §4.1, with `phase=plan` and `Phase 2/3` in the markers. Dispatch prompt: `"Run the superpowers:writing-plans skill against the spec at <SPEC_PATH>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive. On non-`BLOCKED:` return, parse `PLAN_PATH` and emit `plan=${PLAN_PATH}` in the dispatch_end line in place of the brainstorm `spec=…` field.
+Identical scaffold to §4.1, with `phase=plan`, `Phase 2/3` in the markers, and `Phase 2/3: Plan` as the controller's TodoWrite item subject. Dispatch prompt: `"Run the superpowers:writing-plans skill against the spec at <SPEC_PATH>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive. On non-`BLOCKED:` return, parse `PLAN_PATH` and emit `plan=${PLAN_PATH}` in the dispatch_end line in place of the brainstorm `spec=…` field.
 
 #### 4.3. Execute
 
-Identical scaffold to §4.1, with `phase=execute` and `Phase 3/3` in the markers. Capture the branch base before dispatch:
+Identical scaffold to §4.1, with `phase=execute`, `Phase 3/3` in the markers, and `Phase 3/3: Execute` as the controller's TodoWrite item subject. Capture the branch base before dispatch:
 
 ```bash
 BRANCH_BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master)
