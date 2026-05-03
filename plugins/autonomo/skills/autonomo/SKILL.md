@@ -1,20 +1,20 @@
 ---
 name: autonomo
-description: Use when the user types `/autonomo <input>` to autonomously turn a GitHub issue into a pull request — accepts an issue number, issue URL, or freeform task description. Runs the full superpowers pipeline (brainstorm → plan → execute → PR) without user interaction. For relatively simple tasks; reuses the current worktree or feature branch when clean, refuses on a dirty tree or a branch already carrying commits.
+description: Use when the user types `/autonomo <prompt>` to autonomously turn a freeform task description into a pull request. Runs the full superpowers pipeline (brainstorm → plan → execute → PR) without user interaction. For relatively simple tasks; reuses the current worktree or feature branch when clean, refuses on a dirty tree or a branch already carrying commits.
 ---
 
 # Autonomo
 
-`/autonomo <input>` takes a GitHub issue (number, URL) or a freeform task description and runs the full `superpowers` pipeline — brainstorm a spec, write a plan, execute the plan, open a PR — without prompting the user. The user is not watching: subagents make best-effort decisions on small calls and bail with `BLOCKED:` only on high-stakes ambiguity. On success it prints a PR URL; on bail it leaves the branch and a one-page report at `tmp/autonomo/<slug>-<timestamp>.md`.
+`/autonomo <prompt>` takes a freeform task description and runs the full `superpowers` pipeline — brainstorm a spec, write a plan, execute the plan, open a PR — without prompting the user. The user is not watching: subagents make best-effort decisions on small calls and bail with `BLOCKED:` only on high-stakes ambiguity. On success it prints a PR URL; on bail it leaves the branch and a one-page report at `tmp/autonomo/<slug>-<timestamp>.md`.
 
 ## When to use
 
-Use `/autonomo` for issues that are well-scoped, single-package, and don't touch auth, billing, security, data migration, or external API contracts. Typical fits: typo fixes, internal renames, adding a small utility, fleshing out a clearly-described function, doc tweaks. Either an issue with a concrete actionable body, or a freeform one-liner you'd otherwise paste into a fresh session.
+Use `/autonomo` for tasks that are well-scoped, single-package, and don't touch auth, billing, security, data migration, or external API contracts. Typical fits: typo fixes, internal renames, adding a small utility, fleshing out a clearly-described function, doc tweaks. A concrete actionable one-liner you'd otherwise paste into a fresh session.
 
 Do NOT use it for:
 
 - Multi-subsystem work, anything spanning packages or services.
-- Tasks where the right answer depends on judgment calls the issue doesn't resolve (the subagents will bail).
+- Tasks where the right answer depends on judgment calls the prompt doesn't resolve (the subagents will bail).
 - Anything where you need to be in the loop — `/autonomo` is unattended by design. If you want to review the spec or plan before implementation, run the underlying `superpowers` skills directly.
 - Starting from a dirty tree, or from a feature branch that already has commits ahead of `main`/`master`. The skill refuses both; clean up first or switch to `main`/`master` / a freshly cut branch.
 
@@ -138,18 +138,14 @@ The `superpowers` plugin is also a hard requirement, but plugin presence isn't s
 
 ### 2. Parse input
 
-The `<input>` argument from `/autonomo <input>` resolves to one of three shapes. The controller picks based on syntax:
+The `<input>` argument from `/autonomo <input>` is a freeform task description. The only check is non-emptiness:
 
 | Shape | Match | Resolution |
 |-------|-------|------------|
-| Issue number | `^\d+$` or `^#\d+$` | `gh issue view <N> --json title,body,number` against the current repo |
-| Issue URL | matches `github.com/.+/issues/\d+` | `gh issue view <url> --json title,body,number` |
-| Freeform | anything else (non-empty) | `{title: <input>, body: "", source: "freeform"}` — no `gh` call |
-| Empty | `<input>` is empty / whitespace only | exit `BLOCKED: usage: /autonomo <issue-number \| issue-url \| "task description">` |
+| Prompt | non-empty input | `{title: <input>, body: ""}` — pass through verbatim |
+| Empty | `<input>` is empty / whitespace only | exit `BLOCKED: usage: /autonomo "<task description>"` |
 
-Store the resolved task object as `TASK` for the rest of the run. For issue inputs, also store `ISSUE_NUMBER` (used later in the PR body's `Closes #N` line). For freeform, leave `ISSUE_NUMBER` empty.
-
-If `gh issue view` fails (network, auth, nonexistent issue, no read access), surface the error one-line and exit. Do not proceed.
+Store the resolved task object as `TASK` for the rest of the run.
 
 ### 3. Pick workspace
 
@@ -157,9 +153,8 @@ Inspect git state, decide where the work goes. Refuse to start from a non-clean 
 
 **Slug derivation.** Compute `<slug>` once, used for both the branch name and the report filename:
 
-- For issue inputs: kebab-case the issue title, ASCII-only, max 40 chars (truncate at the last word boundary inside the limit).
-- For freeform inputs: `auto-<unix-timestamp>`.
-- If the slugified issue title comes out empty (emoji-only, all non-Latin script): fall back to `auto-<unix-timestamp>`.
+- Kebab-case the prompt, ASCII-only, max 40 chars (truncate at the last word boundary inside the limit).
+- If the slugified prompt comes out empty (emoji-only, all non-Latin script, punctuation-only): fall back to `auto-<unix-timestamp>`.
 
 Capture `RUN_TIMESTAMP=$(date +%s)` once at this point — used later for the report filename if the run bails.
 
@@ -228,7 +223,7 @@ echo "${TS} level=info phase=brainstorm event=dispatch_start" >> "${AUTONOMO_LOG
 
 Then call the TodoWrite tool to mark `Phase 1/3: Brainstorm` as `in_progress`.
 
-Dispatch the Agent tool with prompt: `"Run the superpowers:brainstorming skill on this task. Produce a spec. Issue title: <title>. Issue body: <body>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive (verbatim). Substitute the actual log path from the controller's `$AUTONOMO_LOG` at dispatch time.
+Dispatch the Agent tool with prompt: `"Run the superpowers:brainstorming skill on this task. Produce a spec. Task: <prompt>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive (verbatim). Substitute the actual log path from the controller's `$AUTONOMO_LOG` at dispatch time.
 
 On a non-`BLOCKED:` return, parse `SPEC_PATH` and `ASSUMPTIONS_COUNT` from the subagent's output, then emit:
 
@@ -286,7 +281,7 @@ If any return starts with `BLOCKED:` or the subagent errors out, jump to the rep
    - If `BRANCH_NAME` starts with `worktree-`, strip that prefix. (The `worktrunk` / `EnterWorktree` workflow adds it locally; remote should see the clean name.)
    - Otherwise push the local name as-is.
 2. `git push -u origin <remote-branch-name>`.
-3. `gh pr create --title "<issue title or freeform input>" --body "$(cat <<'EOF'
+3. `gh pr create --title "<task prompt, truncated to ~70 chars at a word boundary>" --body "$(cat <<'EOF'
    ...PR body, see template below...
    EOF
    )"` — single command, base branch is the repo default (usually `main`).
@@ -310,9 +305,9 @@ Pass this block verbatim to every dispatched subagent. The wording is load-beari
 
 > You are running inside `/autonomo`, an unattended pipeline. The user is not watching. Rules:
 >
-> 1. Make best-effort decisions on small calls — naming, file layout, minor refactors, deprecation idioms, **and scope ambiguities inside a clearly-scoped task** (e.g. which files to include in a rename, which interpretation to pick when an item could fit either side). When the issue is clear about *what* to do but ambiguous about *which*, pick the most reasonable interpretation and proceed. Surface every assumption you made in your final output under an `## Assumptions` heading. Do NOT escalate detail-level scope ambiguity to `BLOCKED:`.
+> 1. Make best-effort decisions on small calls — naming, file layout, minor refactors, deprecation idioms, **and scope ambiguities inside a clearly-scoped task** (e.g. which files to include in a rename, which interpretation to pick when an item could fit either side). When the task is clear about *what* to do but ambiguous about *which*, pick the most reasonable interpretation and proceed. Surface every assumption you made in your final output under an `## Assumptions` heading. Do NOT escalate detail-level scope ambiguity to `BLOCKED:`.
 > 2. If a decision is high-stakes — data migration, **external API contract change** (HTTP routes, schema, exports crossing package boundaries), anything touching auth / billing / security, or destructive ops — stop and return `BLOCKED:` followed by one paragraph explaining what blocked you. Do not ask the user. Internal renames within a single package, including type renames, are not "API contract changes" for this rule's purposes.
-> 3. If the issue itself has no actionable scope (empty body and an unspecific title, referenced file missing entirely), return `BLOCKED:` and stop.
+> 3. If the task itself has no actionable scope (vague one-liner with no concrete deliverable, referenced file missing entirely), return `BLOCKED:` and stop.
 > 4. Skip any "ask the user" or "wait for approval" gates in the skills you invoke — your output IS the decision.
 > 5. Emit structured stage events to `${AUTONOMO_LOG}` as you work. Use the canonical stage vocabulary defined under "Canonical stage vocabulary" in the `/autonomo` SKILL for your phase.
 >
@@ -338,8 +333,6 @@ The pressure scenarios in `pressure-scenarios/` exist to verify these rules unde
 ## PR body template
 
 ```
-Closes #<ISSUE_NUMBER>
-
 ## Summary
 <1-3 bullets, lifted from the execute-plan subagent's summary>
 
@@ -358,13 +351,11 @@ Closes #<ISSUE_NUMBER>
 🤖 Opened by /autonomo
 ```
 
-For freeform input (no `ISSUE_NUMBER`), omit the `Closes #...` line entirely. The rest of the template stays the same.
-
 ## Failure handling
 
 | Phase | Failure mode | Autonomo response |
 |-------|--------------|-------------------|
-| Input parse | empty input, malformed `#NN`, unreachable URL, `gh` auth missing | exit before any branch created; print one-line cause |
+| Input parse | empty input, `gh` auth missing | exit before any branch created; print one-line cause |
 | Workspace | dirty tree, branch already has commits ahead of default, branch creation fails | exit before any subagent runs; print one-line cause and suggested fix |
 | Brainstorm | returns `BLOCKED:`, errors, no spec path | write report, leave artifacts, exit |
 | Plan | same | same |
@@ -379,7 +370,7 @@ For freeform input (no `ISSUE_NUMBER`), omit the `Closes #...` line entirely. Th
 # Autonomo run blocked
 
 - Phase: <brainstorm | plan | execute | pr>
-- Issue: <#NN or freeform title>
+- Task: <prompt verbatim>
 - Branch / worktree: <branch name or worktree path>
 - Log: `tmp/autonomo/<slug>-<RUN_TIMESTAMP>.log` (full structured event history)
 - Started: <iso8601>
@@ -394,7 +385,7 @@ For freeform input (no `ISSUE_NUMBER`), omit the `Closes #...` line entirely. Th
 - commits: <git log --oneline since branch base, or "none">
 
 ## Suggested next step
-<best-guess hint, e.g. "Run /autonomo again after clarifying issue body" or "Resume with /superpowers:executing-plans against tmp/plans/<plan>.md">
+<best-guess hint, e.g. "Run /autonomo again with a more specific prompt" or "Resume with /superpowers:executing-plans against tmp/plans/<plan>.md">
 ```
 
 No retry. No rollback. Bail on first failure. Leave artifacts in place — the report is a one-page summary, the log is the full event history. The user inspects either, fixes input or environment, and re-runs.

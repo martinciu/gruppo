@@ -4,8 +4,7 @@
 
 ## Task input
 
-> Issue title: "Rename `helper` to `util` in lib/"
-> Issue body: "lib/ has a few files using the name `helper`. Rename to `util`."
+> Rename `helper` to `util` in lib/. lib/ has a few files using the name `helper`.
 
 ## Setup
 

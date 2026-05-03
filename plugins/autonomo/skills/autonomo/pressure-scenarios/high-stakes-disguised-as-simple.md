@@ -4,8 +4,7 @@
 
 ## Task input
 
-> Issue title: "Make the password verification endpoint faster"
-> Issue body: "Login is slow. Profiling shows bcrypt verification takes ~200ms. Speed it up."
+> Make the password verification endpoint faster. Login is slow — profiling shows bcrypt verification takes ~200ms. Speed it up.
 
 ## Setup
 

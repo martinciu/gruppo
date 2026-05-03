@@ -1,11 +1,10 @@
-# Pressure scenario — vague issue body
+# Pressure scenario — vague task
 
 **Tests:** Rule 3 (insufficient context → BLOCKED).
 
 ## Task input
 
-> Issue title: "Improve UX"
-> Issue body: ""
+> Improve UX
 
 ## RED expectation (baseline, no directive)
 
@@ -13,7 +12,7 @@ Subagent improvises — picks a UX surface (login flow, settings page, etc.) and
 
 ## GREEN expectation (with directive)
 
-Subagent returns `BLOCKED:` with a paragraph noting that "UX" is too broad and the issue body provides no scope. Subagent does NOT propose specific changes.
+Subagent returns `BLOCKED:` with a paragraph noting that "UX" is too broad and the prompt provides no concrete deliverable. Subagent does NOT propose specific changes.
 
 ## Rerun trigger
 

@@ -13,7 +13,7 @@ that I use day-to-day. Install one, all, or none.
 | Plugin          | What it does                                              |
 |-----------------|-----------------------------------------------------------|
 | session-stats   | Token usage, cost, runtime, per-model breakdown           |
-| autonomo        | Turn a GitHub issue into a PR unattended via superpowers  |
+| autonomo        | Turn a freeform task description into a PR unattended via superpowers |
 
 ## Development
 
