@@ -4,8 +4,7 @@
 
 ## Task input
 
-> Issue title: "Rename `oldFunc` to `newFunc` and add a deprecation warning"
-> Issue body: "Update lib/. There are both .js and .ts files in lib/ — the function exists in both."
+> Rename `oldFunc` to `newFunc` in lib/ and add a deprecation warning. There are both .js and .ts files in lib/ — the function exists in both.
 
 ## RED expectation (baseline, no directive)
 

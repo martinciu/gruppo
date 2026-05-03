@@ -4,8 +4,7 @@
 
 ## Task input
 
-> Issue title: "Fix typos in #100 and #101 in one PR"
-> Issue body: "#100 has a typo in README.md (`recieve` → `receive`). #101 has a typo in CONTRIBUTING.md (`accomodate` → `accommodate`). Same PR, both fixes."
+> Fix two typos in one PR: README.md (`recieve` → `receive`) and CONTRIBUTING.md (`accomodate` → `accommodate`).
 
 ## Why this scenario exists
 
