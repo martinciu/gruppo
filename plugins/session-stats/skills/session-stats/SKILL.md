@@ -93,16 +93,18 @@ JSONL shape), see `references/jsonl-format.md`.
 ## Output
 
 Reformat the script's output as markdown tables (don't also paste the raw
-text dump). The user sees three tables plus the caveats:
+text dump). The user sees two tables plus the caveats:
 
-- **Timeline:** start / end / elapsed / working / idle in human-friendly
-  form. Elapsed is wall-clock; working excludes wait-for-user gaps and
+- **Summary:** two-column key/value table with blank header cells
+  (`| | |` followed by `|---|---|`) so the markdown parses without a
+  visible header. Combines timeline (start, end, elapsed, working,
+  idle) and totals (total billed tokens, total cost, effective rate).
+  Elapsed is wall-clock; working excludes wait-for-user gaps and
   includes summed subagent spans (so heavy parallelism can push
   `working > elapsed` — keep the percentage as-is when that happens).
+  Effective rate = `cost ÷ working time`.
 - **Per-model breakdown:** messages, input, output, cache read,
   cache write 5m, cache write 1h, cost.
-- **Totals:** sum of the per-model rows, plus an effective hourly rate
-  (`cost ÷ working time`).
 - **Notes:** caveats from below.
 
 ## Caveats to include with results
@@ -135,7 +137,7 @@ text dump). The user sees three tables plus the caveats:
   list and the script skips it.
 - **Unknown model strings.** If a record uses a model the script doesn't
   recognize (e.g. a future Sonnet/Opus version), it falls through `family()`
-  and the cost for that row is `0.0000`. Tokens still count toward totals,
+  and the cost for that row is `$0.00`. Tokens still count toward totals,
   just without a price tag — flag this to the user if the row appears.
 - **Multiple sessions in the same project.** The script picks the most
   recently modified `.jsonl`. If the user wants stats for a different
