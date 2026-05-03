@@ -113,19 +113,16 @@ def fmt_duration(seconds):
     h = sec_int // 3600
     m = (sec_int % 3600) // 60
     s = sec_int % 60
-    minutes = sec_int / 60.0
-    return f"{h}:{m:02d}:{s:02d} ({sec_int:,}s, {minutes:.1f} min)"
+    if h > 0:
+        return f"{h}h {m}m"
+    if m > 0:
+        return f"{m}m {s}s"
+    return f"{s}s"
 
 
 def fmt_working(working, elapsed):
     pct = (working / elapsed * 100) if elapsed > 0 else 0
-    sec_int = int(round(working))
-    h = sec_int // 3600
-    m = (sec_int % 3600) // 60
-    s = sec_int % 60
-    minutes = sec_int / 60.0
-    return (f"{h}:{m:02d}:{s:02d} ({sec_int:,}s, {minutes:.1f} min, "
-            f"{pct:.0f}% of elapsed)")
+    return f"{fmt_duration(working)} ({pct:.0f}% of elapsed)"
 
 
 def fmt_rate(cost, working_seconds):
@@ -133,6 +130,62 @@ def fmt_rate(cost, working_seconds):
         return "n/a (no working time recorded)"
     rate = cost / (working_seconds / 3600.0)
     return f"${rate:.2f}/hr"
+
+
+def fmt_tokens(n):
+    if n < 1000:
+        return str(n)
+    if n < 99_950:
+        return f"{n/1000:.1f}k"
+    if n < 999_500:
+        return f"{n/1000:.0f}k"
+    return f"{n/1_000_000:.1f}M"
+
+
+def fmt_cost(c):
+    if c == 0:
+        return "$0.00"
+    if c < 0.005:
+        return "<$0.01"
+    return f"${c:,.2f}"
+
+
+def fmt_timestamp(s):
+    if not s:
+        return ""
+    dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    return dt.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def fmt_model(model):
+    if not model or model == "unknown":
+        return model or "unknown"
+    s = model.replace("claude-", "")
+    parts = s.split("-")
+    snapshot = None
+    if parts and len(parts[-1]) == 8 and parts[-1].isdigit():
+        snapshot = parts[-1]
+        parts = parts[:-1]
+    context = None
+    if parts and len(parts[-1]) >= 2 and parts[-1][-1] in "mk" and parts[-1][:-1].isdigit():
+        context = parts[-1]
+        parts = parts[:-1]
+    families = {"opus": "Opus", "sonnet": "Sonnet", "haiku": "Haiku"}
+    family_idx = next((i for i, p in enumerate(parts) if p in families), None)
+    if family_idx is None:
+        return model.replace("claude-", "")
+    family_name = families[parts[family_idx]]
+    version_parts = parts[:family_idx] + parts[family_idx + 1:]
+    version = ".".join(version_parts)
+    out = f"{family_name} {version}".strip()
+    suffix = []
+    if context:
+        suffix.append(f"{context.upper()} ctx")
+    if snapshot:
+        suffix.append(f"{snapshot[:4]}-{snapshot[4:6]}-{snapshot[6:8]}")
+    if suffix:
+        out += f" ({', '.join(suffix)})"
+    return out
 
 
 def discover_session_file():
@@ -227,15 +280,16 @@ def main():
         a = datetime.fromisoformat(first_ts.replace("Z", "+00:00"))
         b = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
         elapsed_seconds = (b - a).total_seconds()
-        print(f"  start:    {first_ts}")
-        print(f"  end:      {last_ts}")
+        print(f"  start:    {fmt_timestamp(first_ts)}")
+        print(f"  end:      {fmt_timestamp(last_ts)}")
         print(f"  elapsed:  {fmt_duration(elapsed_seconds)}")
         print(f"  working:  {fmt_working(working_seconds, elapsed_seconds)}")
         print(f"  idle:     {fmt_duration(idle_seconds)}  (controller wait-for-user only)")
     print()
 
-    header = (f"{'Model':<28}{'Msgs':>6}{'Input':>9}{'Output':>9}"
-              f"{'CacheR':>12}{'CW-5m':>10}{'CW-1h':>10}{'Cost USD':>11}")
+    header = (f"{'Model':<28}{'Messages':>10}{'Input':>9}{'Output':>9}"
+              f"{'Cache Read':>12}{'Cache Write 5m':>16}{'Cache Write 1h':>16}"
+              f"{'Cost':>11}")
     print(header)
     print("-" * len(header))
 
@@ -252,18 +306,20 @@ def main():
         total_cost += cost
         for k in ("in", "out", "cr", "cw5", "cw1", "msgs"):
             totals[k] += e[k]
-        short = model.replace("claude-", "")
-        print(f"{short:<28}{e['msgs']:>6}{e['in']:>9,}{e['out']:>9,}"
-              f"{e['cr']:>12,}{e['cw5']:>10,}{e['cw1']:>10,}{cost:>11.4f}")
+        print(f"{fmt_model(model):<28}{e['msgs']:>10}"
+              f"{fmt_tokens(e['in']):>9}{fmt_tokens(e['out']):>9}"
+              f"{fmt_tokens(e['cr']):>12}{fmt_tokens(e['cw5']):>16}"
+              f"{fmt_tokens(e['cw1']):>16}{fmt_cost(cost):>11}")
 
     print("-" * len(header))
-    print(f"{'TOTAL':<28}{totals['msgs']:>6}{totals['in']:>9,}{totals['out']:>9,}"
-          f"{totals['cr']:>12,}{totals['cw5']:>10,}{totals['cw1']:>10,}"
-          f"{total_cost:>11.4f}")
+    print(f"{'TOTAL':<28}{totals['msgs']:>10}"
+          f"{fmt_tokens(totals['in']):>9}{fmt_tokens(totals['out']):>9}"
+          f"{fmt_tokens(totals['cr']):>12}{fmt_tokens(totals['cw5']):>16}"
+          f"{fmt_tokens(totals['cw1']):>16}{fmt_cost(total_cost):>11}")
     print()
     billed = sum(totals[k] for k in ("in", "out", "cr", "cw5", "cw1"))
-    print(f"Total billed tokens: {billed:,}")
-    print(f"Total cost (USD, public rates): ${total_cost:.4f}")
+    print(f"Total billed tokens: {fmt_tokens(billed)}")
+    print(f"Total cost (USD, public rates): {fmt_cost(total_cost)}")
     print(f"Effective rate: {fmt_rate(total_cost, working_seconds)} "
           f"(cost ÷ working time, includes parallel subagent compute)")
     return 0
