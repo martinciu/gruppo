@@ -1,0 +1,82 @@
+[
+  {
+    "query": "ok the autonomo run is done — give me the markdown to drop into the PR body under ## Session stats so i can paste it before `gh pr create`",
+    "should_trigger": true
+  },
+  {
+    "query": "how much has this claude code session cost me so far? been working on the auth refactor for like an hour",
+    "should_trigger": true
+  },
+  {
+    "query": "drop session token usage into a slack-friendly status update for #ai-team — concise, with per-model split",
+    "should_trigger": true
+  },
+  {
+    "query": "include the cost from this session in the commit message footer please",
+    "should_trigger": true
+  },
+  {
+    "query": "i need a per-model breakdown for this session — how much went to opus vs sonnet vs haiku",
+    "should_trigger": true
+  },
+  {
+    "query": "how long has this been going? show me working time too, not just elapsed wall-clock",
+    "should_trigger": true
+  },
+  {
+    "query": "what's the controller vs subagent token split for this run? subagents have been firing a lot",
+    "should_trigger": true
+  },
+  {
+    "query": "what's my effective hourly rate at public anthropic rates rn",
+    "should_trigger": true
+  },
+  {
+    "query": "append the session runtime + cost to the CHANGELOG.md entry im about to write for v0.8.0",
+    "should_trigger": true
+  },
+  {
+    "query": "for the standup tomorrow i want to share what today's claude code session cost — give me a tidy markdown block with totals and per-model",
+    "should_trigger": true
+  },
+  {
+    "query": "how do i check our org-wide anthropic api usage on console.anthropic.com — finance is asking for last month's spend",
+    "should_trigger": false
+  },
+  {
+    "query": "what does claude opus 4.7 cost per million tokens in general — i need the rate card to estimate a project budget",
+    "should_trigger": false
+  },
+  {
+    "query": "/cost is fine, no need for the full breakdown — just give me the headline number",
+    "should_trigger": false
+  },
+  {
+    "query": "how do i pull billing data from the anthropic console dashboard? finance wants a CSV of last month's invoice",
+    "should_trigger": false
+  },
+  {
+    "query": "show me last week's token usage across all my projects — i want to see total spend by repo for my retro",
+    "should_trigger": false
+  },
+  {
+    "query": "i ran a claude code session last tuesday in /Users/me/code/other-repo — can you pull the stats for that one?",
+    "should_trigger": false
+  },
+  {
+    "query": "how do i count how many lines of code i added in this session? something like git diff stats but for this run",
+    "should_trigger": false
+  },
+  {
+    "query": "what's the price of running claude on aws bedrock vs anthropic direct — trying to decide which to use",
+    "should_trigger": false
+  },
+  {
+    "query": "claude pro plan question — does the pro tier include opus 4.7 access or do i need team to use it",
+    "should_trigger": false
+  },
+  {
+    "query": "how do i benchmark two different prompts to see which is cheaper at scale",
+    "should_trigger": false
+  }
+]
