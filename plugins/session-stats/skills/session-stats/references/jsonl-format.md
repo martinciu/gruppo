@@ -45,3 +45,17 @@ Each line is a JSON object. Relevant types:
 
 `timestamp` is ISO-8601. First/last timestamps across the controller plus
 all subagents give the wall-clock elapsed time.
+
+## Working-time computation gotchas
+
+`aggregate.py`'s working-time calculation has two filters worth knowing
+about if you're debugging a suspiciously low number:
+
+- **Synthetic user records.** `type: "user"` records whose `message.content`
+  is a list of only `tool_result` blocks are produced by Claude Code, not
+  the human — they must not close a turn. The `is_real_user_message`
+  helper filters them out. If Claude Code evolves the structure, this
+  filter is the first thing to check.
+- **Open turn at EOF.** If the session was killed before the last turn's
+  assistant reply, that turn contributes 0 to working time — runtime past
+  the last observable timestamp is unobservable.

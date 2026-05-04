@@ -19,6 +19,20 @@
       "prompt": "I'm about to run `gh pr create` and want to paste a `## Session stats` block into the PR body. Give me the markdown to paste — runtime, cost, per-model breakdown.",
       "expected_output": "A self-contained markdown block under `## Session stats` ready to paste into a PR body. Should include summary (runtime, cost) and per-model breakdown. Caveats included but kept tight (PR body context).",
       "files": []
+    },
+    {
+      "id": 2,
+      "name": "headline-only-defer-to-cost",
+      "prompt": "what's this session cost?",
+      "expected_output": "Skill recognizes this is a headline-only ask and suggests /cost (and possibly /status) before — or instead of — running the full aggregator. The skill's SKILL.md says: 'If the user only wants the headline number, suggest /cost and /status first — those are built-in and don't require reading disk. Use this skill when the user wants the per-model breakdown, runtime, or cache-read / cache-write split that those built-ins don't show.'",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "embedded-slack-update",
+      "prompt": "drop session token usage into a slack-friendly status update for #ai-team — concise, with per-model split",
+      "expected_output": "A Slack-appropriate block (no markdown tables — Slack doesn't render them; uses bullets, bold, or fixed-width code blocks instead). Includes total cost/tokens and per-model split. Tighter than the PR-body output. No `## Session stats` heading (Slack doesn't use H2). Caveats abbreviated to one or two lines, or omitted.",
+      "files": []
     }
   ]
 }

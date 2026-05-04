@@ -8,26 +8,11 @@ description: Use when the user asks about THIS Claude Code session's metrics —
 Compute token usage, cost, runtime, and per-model breakdown for the current
 Claude Code session by reading its on-disk JSONL transcripts.
 
-## Quick reference
-
-1. Run the aggregator from the session's original working directory — chain
-   the `cd` into the same shell call so it isn't lost between turns:
-
-   ```bash
-   cd <session-original-cwd> && python3 <skill-dir>/aggregate.py
-   ```
-
-   The script discovers the transcript via `pwd`. If you don't know the
-   session's original cwd, ask the user.
-2. Reformat the script's output as markdown tables (timeline, per-model
-   breakdown, totals) — don't also paste the raw text dump.
-3. Append the caveats from below.
-
 ## When to use
 
 ### Direct asks
 
-The user wants stats reported back to them. Examples:
+The user wants stats reported back. Examples:
 
 - "What's my session cost so far?"
 - "Show token usage for this session."
@@ -35,43 +20,43 @@ The user wants stats reported back to them. Examples:
 - "How many tokens has the controller burned vs. the subagents?"
 
 If the user only wants the headline number, suggest `/cost` and `/status`
-first — those are built-in and don't require reading disk. Use this skill
-when the user wants the per-model breakdown, runtime, or cache-read /
-cache-write split that those built-ins don't show.
+first — those are built-in and don't read disk. Use this skill when the
+user wants the per-model breakdown, runtime, or cache-read / cache-write
+split that the built-ins don't show.
 
 ### Embedded use (stats as input to another task)
 
-The user wants the numbers as content for something else. The action verb
-points at the destination, but the data dependency is session stats.
-Examples:
+The user wants the numbers as content for something else. The verb points
+at the destination, but the data dependency is session stats:
 
 - "Add session stats to the PR description."
 - "Include the cost in the commit message."
 - "Append a per-model breakdown to the changelog."
 - "Post token usage to Slack."
-- "Drop the runtime + cost into the status update."
 
-In these cases the skill still fires — it produces the numbers. Formatting
-for the destination and the downstream write (editing the PR, posting to
-Slack, etc.) are separate steps you handle after the aggregator returns.
+The skill produces the numbers. **Tailor the format to the destination** —
+GitHub/PR bodies render markdown tables and `## headings`; Slack does not
+(use `*bold*`, bullets, or fenced code blocks). Editing the PR or posting
+to Slack is a separate downstream step.
 
-`/cost` and `/status` are *not* substitutes here, because their output
-isn't formatted for embedding elsewhere. Run `aggregate.py`.
+`/cost` and `/status` are not substitutes here — their output isn't
+formatted for embedding.
 
 ### When NOT to fire
 
-- Stats about something other than the current Claude Code session
-  (e.g. Anthropic API usage at the org level, billing dashboards).
-- A *past* session in a different working directory — the discovery uses
+- Stats about something other than the current session (org-level Anthropic
+  usage, billing dashboards).
+- A *past* session in a different working directory — discovery uses
   `pwd`, so the user must be in the original session's cwd.
-- The user explicitly says they only want `/cost` or `/status` output.
+- The user explicitly says they only want `/cost` or `/status`.
 
 ## Procedure
 
-Run `aggregate.py` from the session's original working directory:
+Run the aggregator from the session's original working directory. Chain
+the `cd` into the same shell call so it isn't lost between turns:
 
 ```bash
-python3 <skill-dir>/aggregate.py
+cd <session-original-cwd> && python3 <skill-dir>/aggregate.py
 ```
 
 The script:
@@ -84,28 +69,32 @@ The script:
    `<session-id>/subagents/agent-*.jsonl`.
 4. Prints the timeline, per-model table, totals, and effective hourly rate.
 
-To override discovery (e.g. inspect a specific transcript), set
-`SESSION_FILE` and optionally `SUB_DIR` before running.
+To target a specific transcript (e.g. an older session in the same
+project), set `SESSION_FILE` and optionally `SUB_DIR` before running. If
+you don't know the session's original cwd, ask the user.
 
-For details on the on-disk schema (only relevant if Claude Code changes the
-JSONL shape), see `references/jsonl-format.md`.
+For the on-disk JSONL schema (only relevant if Claude Code changes the
+shape), see `references/jsonl-format.md`.
 
-## Output
+## Output format
 
-Reformat the script's output as markdown tables (don't also paste the raw
-text dump). The user sees two tables plus the caveats:
+Reformat the aggregator's output as markdown — don't also paste the raw
+text dump. Default layout (good for chat, PR bodies, GitHub issues):
 
-- **Summary:** two-column key/value table with blank header cells
-  (`| | |` followed by `|---|---|`) so the markdown parses without a
-  visible header. Combines timeline (start, end, elapsed, working,
-  idle) and totals (total billed tokens, total cost, effective rate).
-  Elapsed is wall-clock; working excludes wait-for-user gaps and
-  includes summed subagent spans (so heavy parallelism can push
-  `working > elapsed` — keep the percentage as-is when that happens).
-  Effective rate = `cost ÷ working time`.
-- **Per-model breakdown:** messages, input, output, cache read,
+- **Summary table** — two-column key/value with blank header cells
+  (`| | |` then `|---|---|`) so the markdown parses without a visible
+  header. Combines timeline (start, end, elapsed, working, idle) and
+  totals (total billed tokens, total cost, effective rate). Elapsed is
+  wall-clock; working excludes wait-for-user gaps and includes summed
+  subagent spans (parallel subagents can push `working > elapsed` — keep
+  the percentage as-is). Effective rate = `cost ÷ working time`.
+- **Per-model breakdown** — messages, input, output, cache read,
   cache write 5m, cache write 1h, cost.
-- **Notes:** caveats from below.
+- **Notes** — caveats below.
+
+When the destination doesn't render markdown tables (Slack), use the same
+data with bullets, `*bold*`, or a fenced code block instead — and skip
+`##` headings, since Slack shows them literally.
 
 ## Caveats to include with results
 
@@ -126,34 +115,29 @@ text dump). The user sees two tables plus the caveats:
   (parallel subagents can push working > elapsed). Effective rate = cost ÷
   working time. Plan billing still applies.
 
+For tight contexts (PR body, Slack), it's fine to keep only the most
+relevant 2–4 caveats — typically public-rate, plan billing, and cache
+reads.
+
 ## Edge cases
 
-- **No session file found.** The discovery uses `pwd`. If the user `cd`'d into
-  a subdirectory after starting the session, the slug won't match. Ask them to
-  run from the session's original working directory, or set `SESSION_FILE`
-  explicitly.
+- **No session file found.** Discovery uses `pwd`. If the user `cd`'d into
+  a subdirectory after starting the session, the slug won't match. Ask
+  them to run from the original cwd, or set `SESSION_FILE` explicitly.
 - **Sessions with only a controller (no subagents).** The `subagents/`
-  directory may not exist. The script handles that — `glob` returns an empty
-  list and the script skips it.
-- **Unknown model strings.** If a record uses a model the script doesn't
-  recognize (e.g. a future Sonnet/Opus version), it falls through `family()`
-  and the cost for that row is `$0.00`. Tokens still count toward totals,
-  just without a price tag — flag this to the user if the row appears.
+  directory may not exist; the script handles that.
+- **Unknown model strings.** A future Sonnet/Opus version the script
+  doesn't recognize falls through `family()` and prices that row at $0.00.
+  Tokens still count toward totals — flag the row to the user if it
+  appears.
 - **Multiple sessions in the same project.** The script picks the most
-  recently modified `.jsonl`. If the user wants stats for a different
-  session, list `~/.claude/projects/<slug>/*.jsonl` and pass the chosen path
-  via `SESSION_FILE`.
-- **Zero working time.** If the transcript has no real user messages
-  *and* no subagents, working time is 0. The script prints
-  `Effective rate: n/a (no working time recorded)` instead of dividing
-  by zero. Tokens still total normally.
-- **Synthetic user records (tool results).** Records with
-  `type: "user"` whose `message.content` is a list of only
-  `tool_result` blocks are produced by Claude Code, not the human.
-  They must not close a turn. The script's `is_real_user_message`
-  helper filters them out — if you see suspiciously low working time,
-  check that this filter still matches the JSONL shape (Claude Code
-  may evolve the structure).
-- **Open turn at EOF.** If the session was killed before the last
-  turn's assistant reply, that turn contributes 0 to working time —
-  the runtime past the last observable timestamp is unobservable.
+  recently modified `.jsonl`. To target a different one, list
+  `~/.claude/projects/<slug>/*.jsonl` and pass the chosen path via
+  `SESSION_FILE`.
+- **Zero working time.** If the transcript has no real user messages and
+  no subagents, working time is 0. The script prints
+  `Effective rate: n/a (no working time recorded)` rather than dividing
+  by zero.
+
+For deeper script-internals notes (synthetic-user-record filtering,
+open-turn-at-EOF handling), see `references/jsonl-format.md`.
