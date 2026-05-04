@@ -1,6 +1,6 @@
 ---
 name: session-stats
-description: Use when the user asks for current Claude Code session stats — token usage, cost, runtime, or per-model breakdown — either directly ("show session cost", "how long has this been running") or as numbers to embed elsewhere ("add stats to the PR description", "include cost in changelog", "post token usage to Slack"). Trigger applies even when the top-level verb names the destination rather than the stats.
+description: Use when the user asks about THIS Claude Code session's metrics — cost so far, token usage, runtime/elapsed/working time, per-model split (Opus/Sonnet/Haiku), or controller-vs-subagent breakdown. Fires whether they want the numbers shown directly ("how much has this cost", "how long has this been running", "what's my token usage") or formatted to embed elsewhere (PR body, commit message, changelog, Slack, standup, status update — e.g. "give me a markdown block of session stats", "drop the cost into the PR description"). Trigger on intent, not verb — show, share, include, append, post, drop, paste, give me all qualify. Skip for: Anthropic API list pricing, console.anthropic.com / org billing dashboards, plan-tier comparisons (Pro vs Max), lines-of-code or git diff stats, prompt benchmarking, or sessions in a different working directory.
 ---
 
 # Session Stats

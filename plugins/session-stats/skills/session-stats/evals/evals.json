@@ -1,0 +1,24 @@
+{
+  "skill_name": "session-stats",
+  "fixture": {
+    "session_file": "/Users/martinciu/.claude/projects/-Users-martinciu-code-gruppo--claude-worktrees-improve-session-stats/f3db9e87-a50c-48ca-8004-e85e7d2b77c5.jsonl",
+    "sub_dir": "/Users/martinciu/.claude/projects/-Users-martinciu-code-gruppo--claude-worktrees-improve-session-stats/f3db9e87-a50c-48ca-8004-e85e7d2b77c5/subagents",
+    "note": "Finished session, ~518k JSONL with 4 subagent files. Path is given to the agent via prompt; the skill documents SESSION_FILE/SUB_DIR overrides."
+  },
+  "evals": [
+    {
+      "id": 0,
+      "name": "direct-per-model-breakdown",
+      "prompt": "What's this Claude Code session cost so far? Give me a per-model breakdown — I want to know how much went to Opus vs Sonnet.",
+      "expected_output": "Markdown summary table (start/end/elapsed/working/cost/effective rate) and a per-model breakdown table differentiating Opus and Sonnet, plus the standard caveats. No raw text dump.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "embedded-pr-description",
+      "prompt": "I'm about to run `gh pr create` and want to paste a `## Session stats` block into the PR body. Give me the markdown to paste — runtime, cost, per-model breakdown.",
+      "expected_output": "A self-contained markdown block under `## Session stats` ready to paste into a PR body. Should include summary (runtime, cost) and per-model breakdown. Caveats included but kept tight (PR body context).",
+      "files": []
+    }
+  ]
+}
