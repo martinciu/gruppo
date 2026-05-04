@@ -337,10 +337,10 @@ The pressure scenarios in `pressure-scenarios/` exist to verify these rules unde
 <1-3 bullets, lifted from the execute-plan subagent's summary>
 
 ## Spec
-<link to spec file in repo if committed there, else inline content>
+[<basename of SPEC_PATH>](<SPEC_PATH>)
 
 ## Plan
-<link to plan file in repo if committed there, else inline content>
+[<basename of PLAN_PATH>](<PLAN_PATH>)
 
 ## Assumptions
 <concatenation of every subagent's `## Assumptions` section, deduplicated>
@@ -348,8 +348,14 @@ The pressure scenarios in `pressure-scenarios/` exist to verify these rules unde
 ## Test plan
 <from executing-plans subagent's output>
 
-🤖 Opened by /autonomo
+🤖 Opened autonomously by [/autonomo](https://github.com/martinciu/gruppo/blob/main/plugins/autonomo/skills/autonomo/SKILL.md) — no human in the loop.
 ```
+
+Notes:
+
+- The `## Spec` and `## Plan` sections render **only when their file is tracked in git** (`git ls-files --error-unmatch <path>` returns 0). Otherwise both the heading and body are dropped — no placeholder, no path-only line.
+- Link path is the relative `SPEC_PATH` / `PLAN_PATH`; GitHub renders relative links in PR descriptions against the head branch.
+- The footer link points at the published autonomo SKILL.md in the gruppo repo. It is hardcoded — autonomo does not derive its own source URL.
 
 ## Failure handling
 
