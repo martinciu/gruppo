@@ -281,10 +281,7 @@ If any return starts with `BLOCKED:` or the subagent errors out, jump to the rep
    - If `BRANCH_NAME` starts with `worktree-`, strip that prefix. (The `worktrunk` / `EnterWorktree` workflow adds it locally; remote should see the clean name.)
    - Otherwise push the local name as-is.
 2. `git push -u origin <remote-branch-name>`.
-3. `gh pr create --title "<task prompt, truncated to ~70 chars at a word boundary>" --body "$(cat <<'EOF'
-   ...PR body, see template below...
-   EOF
-   )"` — single command, base branch is the repo default (usually `main`).
+3. Compose the PR body from the template under "## PR body template". For each of `## Spec` and `## Plan`, include the section (heading + link) only if `git ls-files --error-unmatch "<path>"` returns 0; otherwise drop the entire section — no placeholder stub, no path-only line. Then run `gh pr create --title "<task prompt, truncated to ~70 chars at a word boundary>" --body "<composed-body>"` — single command, base branch is the repo default (usually `main`).
 4. Print the PR URL to the user, then echo the log path so post-mortem has it handy:
 
    ```bash
