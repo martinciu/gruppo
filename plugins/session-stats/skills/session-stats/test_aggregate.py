@@ -4,7 +4,15 @@
 Run: python3 test_aggregate.py
 """
 
+import json
+import os
+import tempfile
+from collections import defaultdict
+
 from aggregate import (
+    PRICES,
+    consume,
+    family,
     fmt_cost,
     fmt_duration,
     fmt_model,
@@ -115,6 +123,87 @@ def test_fmt_timestamp():
     )
 
 
+def _assistant_record(model, ts, **usage):
+    u = {"input_tokens": 0, "output_tokens": 0, "cache_read_input_tokens": 0,
+         "cache_creation": {"ephemeral_5m_input_tokens": 0,
+                            "ephemeral_1h_input_tokens": 0}}
+    cw5 = usage.pop("cw5", 0)
+    cw1 = usage.pop("cw1", 0)
+    u["cache_creation"]["ephemeral_5m_input_tokens"] = cw5
+    u["cache_creation"]["ephemeral_1h_input_tokens"] = cw1
+    u.update({"input_tokens": usage.get("tin", 0),
+              "output_tokens": usage.get("tout", 0),
+              "cache_read_input_tokens": usage.get("tcr", 0)})
+    return {"type": "assistant", "timestamp": ts,
+            "message": {"model": model, "usage": u}}
+
+
+def _write_jsonl(records):
+    fd, path = tempfile.mkstemp(suffix=".jsonl")
+    with os.fdopen(fd, "w") as f:
+        for r in records:
+            f.write(json.dumps(r) + "\n")
+    return path
+
+
+def test_consume_multi_model():
+    # Synthetic transcript with two model families. Verifies the per-model
+    # bucket separates by raw model string and that the per_source bucket
+    # sums per-family pricing across them — the path real multi-model
+    # sessions exercise (e.g. Opus controller + Sonnet subagent).
+    path = _write_jsonl([
+        _assistant_record("claude-opus-4-7", "2026-05-01T10:00:00Z",
+                          tin=100, tout=1000, tcr=50000, cw1=8000),
+        _assistant_record("claude-sonnet-4-6", "2026-05-01T10:01:00Z",
+                          tin=50, tout=500, tcr=20000, cw5=2000),
+        _assistant_record("claude-opus-4-7", "2026-05-01T10:02:00Z",
+                          tin=200, tout=2000, tcr=70000),
+    ])
+    try:
+        per_model = defaultdict(lambda: {"in": 0, "out": 0, "cr": 0,
+                                         "cw5": 0, "cw1": 0, "msgs": 0})
+        per_source = {"controller": {"in": 0, "out": 0, "cr": 0,
+                                     "cw5": 0, "cw1": 0, "msgs": 0,
+                                     "cost": 0.0, "model": None},
+                      "subagent":   {"in": 0, "out": 0, "cr": 0,
+                                     "cw5": 0, "cw1": 0, "msgs": 0,
+                                     "cost": 0.0, "model": None}}
+        ts = {"first": None, "last": None}
+        consume(path, per_model, ts, per_source, "controller")
+
+        # Two distinct model rows must survive, with correct message counts.
+        check("opus msgs", per_model["claude-opus-4-7"]["msgs"], 2)
+        check("sonnet msgs", per_model["claude-sonnet-4-6"]["msgs"], 1)
+        check("opus input", per_model["claude-opus-4-7"]["in"], 300)
+        check("opus cw1", per_model["claude-opus-4-7"]["cw1"], 8000)
+        check("sonnet cw5", per_model["claude-sonnet-4-6"]["cw5"], 2000)
+
+        # The per-source bucket cost must use *each row's* family pricing,
+        # not a single mixed rate. Compute the expected directly here.
+        op = PRICES["opus"]
+        sn = PRICES["sonnet"]
+        expect = (300/1e6 * op["in"] + 3000/1e6 * op["out"]
+                  + 120000/1e6 * op["cr"] + 8000/1e6 * op["cw1"]
+                  + 50/1e6 * sn["in"] + 500/1e6 * sn["out"]
+                  + 20000/1e6 * sn["cr"] + 2000/1e6 * sn["cw5"])
+        got = per_source["controller"]["cost"]
+        assert abs(got - expect) < 1e-9, f"controller cost: got {got}, want {expect}"
+        check("controller msgs", per_source["controller"]["msgs"], 3)
+    finally:
+        os.unlink(path)
+
+
+def test_family_handles_bare_and_versioned():
+    # Both bare strings (sometimes seen on background/summarization rows)
+    # and versioned ones must classify into the same family bucket.
+    check("family claude-opus-4-7", family("claude-opus-4-7"), "opus")
+    check("family claude-sonnet-4-6", family("claude-sonnet-4-6"), "sonnet")
+    check("family bare sonnet", family("sonnet"), "sonnet")
+    check("family bare haiku", family("haiku"), "haiku")
+    check("family unknown", family("gpt-4"), None)
+    check("family None", family(None), None)
+
+
 def main():
     tests = [
         test_fmt_tokens,
@@ -124,6 +213,8 @@ def main():
         test_fmt_working,
         test_fmt_rate,
         test_fmt_timestamp,
+        test_consume_multi_model,
+        test_family_handles_bare_and_versioned,
     ]
     for t in tests:
         t()
