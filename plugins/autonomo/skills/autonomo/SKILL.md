@@ -281,10 +281,7 @@ If any return starts with `BLOCKED:` or the subagent errors out, jump to the rep
    - If `BRANCH_NAME` starts with `worktree-`, strip that prefix. (The `worktrunk` / `EnterWorktree` workflow adds it locally; remote should see the clean name.)
    - Otherwise push the local name as-is.
 2. `git push -u origin <remote-branch-name>`.
-3. `gh pr create --title "<task prompt, truncated to ~70 chars at a word boundary>" --body "$(cat <<'EOF'
-   ...PR body, see template below...
-   EOF
-   )"` — single command, base branch is the repo default (usually `main`).
+3. Compose the PR body from the template under "## PR body template". For each of `## Spec` and `## Plan`, include the section (heading + link) only if `git ls-files --error-unmatch "<path>"` returns 0; otherwise drop the entire section — no placeholder stub, no path-only line. Then run `gh pr create --title "<task prompt, truncated to ~70 chars at a word boundary>" --body "<composed-body>"` — single command, base branch is the repo default (usually `main`).
 4. Print the PR URL to the user, then echo the log path so post-mortem has it handy:
 
    ```bash
@@ -337,10 +334,10 @@ The pressure scenarios in `pressure-scenarios/` exist to verify these rules unde
 <1-3 bullets, lifted from the execute-plan subagent's summary>
 
 ## Spec
-<link to spec file in repo if committed there, else inline content>
+[<basename of SPEC_PATH>](<SPEC_PATH>)
 
 ## Plan
-<link to plan file in repo if committed there, else inline content>
+[<basename of PLAN_PATH>](<PLAN_PATH>)
 
 ## Assumptions
 <concatenation of every subagent's `## Assumptions` section, deduplicated>
@@ -348,8 +345,14 @@ The pressure scenarios in `pressure-scenarios/` exist to verify these rules unde
 ## Test plan
 <from executing-plans subagent's output>
 
-🤖 Opened by /autonomo
+🤖 Opened autonomously by [/autonomo](https://github.com/martinciu/gruppo/blob/main/plugins/autonomo/skills/autonomo/SKILL.md) — no human in the loop.
 ```
+
+Notes:
+
+- The `## Spec` and `## Plan` sections render **only when their file is tracked in git** (`git ls-files --error-unmatch <path>` returns 0). Otherwise both the heading and body are dropped — no placeholder, no path-only line.
+- Link path is the relative `SPEC_PATH` / `PLAN_PATH`; GitHub renders relative links in PR descriptions against the head branch.
+- The footer link points at the published autonomo SKILL.md in the gruppo repo. It is hardcoded — autonomo does not derive its own source URL.
 
 ## Failure handling
 
