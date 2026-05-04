@@ -67,7 +67,8 @@ The script:
    `~/.claude/projects/<slug>/`.
 3. Folds in any subagent transcripts at
    `<session-id>/subagents/agent-*.jsonl`.
-4. Prints the timeline, per-model table, totals, and effective hourly rate.
+4. Prints the timeline, per-model table, controller-vs-subagent split
+   (when subagents fired), totals, and effective hourly rate.
 
 To target a specific transcript (e.g. an older session in the same
 project), set `SESSION_FILE` and optionally `SUB_DIR` before running. If
@@ -90,6 +91,10 @@ text dump. Default layout (good for chat, PR bodies, GitHub issues):
   the percentage as-is). Effective rate = `cost ÷ working time`.
 - **Per-model breakdown** — messages, input, output, cache read,
   cache write 5m, cache write 1h, cost.
+- **Controller vs subagents** — same columns, two rows. Only render when
+  subagents fired (the script omits the section otherwise). Useful when
+  the user asks about controller-vs-subagent splits or "where did the
+  subagents go".
 - **Notes** — caveats below.
 
 When the destination doesn't render markdown tables (Slack), use the same

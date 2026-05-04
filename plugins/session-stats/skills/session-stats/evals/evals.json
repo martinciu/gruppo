@@ -33,6 +33,20 @@
       "prompt": "drop session token usage into a slack-friendly status update for #ai-team — concise, with per-model split",
       "expected_output": "A Slack-appropriate block (no markdown tables — Slack doesn't render them; uses bullets, bold, or fixed-width code blocks instead). Includes total cost/tokens and per-model split. Tighter than the PR-body output. No `## Session stats` heading (Slack doesn't use H2). Caveats abbreviated to one or two lines, or omitted.",
       "files": []
+    },
+    {
+      "id": 4,
+      "name": "controller-vs-subagent-split",
+      "prompt": "what's the controller vs subagent token split for this run? subagents have been firing a lot",
+      "expected_output": "A controller-vs-subagent breakdown with cost and tokens for each, plus the controller share as a percentage. The aggregator's `Source` section produces this directly when subagents fired (no manual workaround needed). Should also gently address the user's 'firing a lot' framing if the data doesn't match it.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "name": "embedded-commit-message-footer",
+      "prompt": "include the cost from this session in the commit message footer please",
+      "expected_output": "A short, plain-text trailer in the `Header: value` style of standard git trailers — e.g. `Session-Cost: $39.02 (Opus 4.7, 6.2M tokens, 10m55s working, public rates)`. No markdown rendering. Caveats kept minimal (1-2 short lines).",
+      "files": []
     }
   ]
 }

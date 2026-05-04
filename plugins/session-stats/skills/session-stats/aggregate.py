@@ -208,10 +208,16 @@ def discover_session_file():
     return candidates[0], proj_dir
 
 
-def consume(path, per_model, ts_state):
-    """Fold one transcript into per-model totals and update first/last timestamps."""
+def consume(path, per_model, ts_state, per_source=None, source=None):
+    """Fold one transcript into per-model totals and update first/last timestamps.
+
+    If `per_source` and `source` are provided, the same per-message counters are
+    also accumulated into `per_source[source]` so the caller can show a
+    controller-vs-subagent split alongside the per-model breakdown.
+    """
     if not os.path.exists(path):
         return
+    bucket = per_source[source] if (per_source is not None and source) else None
     with open(path) as f:
         for line in f:
             try:
@@ -230,16 +236,36 @@ def consume(path, per_model, ts_state):
             model = msg.get("model", "unknown")
             u = msg.get("usage", {}) or {}
             e = per_model[model]
-            e["msgs"] += 1
-            e["in"]  += u.get("input_tokens", 0)            or 0
-            e["out"] += u.get("output_tokens", 0)           or 0
-            e["cr"]  += u.get("cache_read_input_tokens", 0) or 0
             ccd = u.get("cache_creation", {}) or {}
-            e["cw5"] += ccd.get("ephemeral_5m_input_tokens", 0) or 0
-            e["cw1"] += ccd.get("ephemeral_1h_input_tokens", 0) or 0
+            cw5 = ccd.get("ephemeral_5m_input_tokens", 0) or 0
+            cw1 = ccd.get("ephemeral_1h_input_tokens", 0) or 0
             if not ccd:
                 # Older records may use the flat field instead of the breakdown.
-                e["cw5"] += u.get("cache_creation_input_tokens", 0) or 0
+                cw5 += u.get("cache_creation_input_tokens", 0) or 0
+            tin  = u.get("input_tokens", 0)            or 0
+            tout = u.get("output_tokens", 0)           or 0
+            tcr  = u.get("cache_read_input_tokens", 0) or 0
+            e["msgs"] += 1
+            e["in"]  += tin
+            e["out"] += tout
+            e["cr"]  += tcr
+            e["cw5"] += cw5
+            e["cw1"] += cw1
+            if bucket is not None:
+                bucket["msgs"] += 1
+                bucket["in"]  += tin
+                bucket["out"] += tout
+                bucket["cr"]  += tcr
+                bucket["cw5"] += cw5
+                bucket["cw1"] += cw1
+                bucket["model"] = bucket.get("model") or model
+                # Track cost contribution (Σ over each row's family pricing).
+                fam = family(model)
+                if fam:
+                    p = PRICES[fam]
+                    bucket["cost"] += (tin/1e6*p["in"] + tout/1e6*p["out"]
+                                     + tcr/1e6*p["cr"] + cw5/1e6*p["cw5"]
+                                     + cw1/1e6*p["cw1"])
 
 
 def main():
@@ -260,12 +286,18 @@ def main():
 
     per_model = defaultdict(lambda: {"in": 0, "out": 0, "cr": 0,
                                      "cw5": 0, "cw1": 0, "msgs": 0})
+    per_source = {
+        "controller": {"in": 0, "out": 0, "cr": 0, "cw5": 0, "cw1": 0,
+                       "msgs": 0, "cost": 0.0, "model": None},
+        "subagent":   {"in": 0, "out": 0, "cr": 0, "cw5": 0, "cw1": 0,
+                       "msgs": 0, "cost": 0.0, "model": None},
+    }
     ts_state = {"first": None, "last": None}
 
-    consume(session_file, per_model, ts_state)
+    consume(session_file, per_model, ts_state, per_source, "controller")
     agent_files = sorted(glob.glob(os.path.join(sub_dir, "agent-*.jsonl")))
     for p in agent_files:
-        consume(p, per_model, ts_state)
+        consume(p, per_model, ts_state, per_source, "subagent")
 
     controller_working, controller_idle = controller_working_idle(session_file)
     sub_total = sum(subagent_span(p) for p in agent_files)
@@ -317,6 +349,23 @@ def main():
           f"{fmt_tokens(totals['cr']):>12}{fmt_tokens(totals['cw5']):>16}"
           f"{fmt_tokens(totals['cw1']):>16}{fmt_cost(total_cost):>11}")
     print()
+
+    # Controller vs subagents (per-source breakdown). Prints only when there's
+    # subagent activity; otherwise it's just a duplicate of the totals line.
+    if per_source["subagent"]["msgs"] > 0:
+        sub_header = (f"{'Source':<28}{'Messages':>10}{'Input':>9}{'Output':>9}"
+                      f"{'Cache Read':>12}{'Cache Write 5m':>16}"
+                      f"{'Cache Write 1h':>16}{'Cost':>11}")
+        print(sub_header)
+        print("-" * len(sub_header))
+        for label, key in (("Controller", "controller"), ("Subagents", "subagent")):
+            e = per_source[key]
+            print(f"{label:<28}{e['msgs']:>10}"
+                  f"{fmt_tokens(e['in']):>9}{fmt_tokens(e['out']):>9}"
+                  f"{fmt_tokens(e['cr']):>12}{fmt_tokens(e['cw5']):>16}"
+                  f"{fmt_tokens(e['cw1']):>16}{fmt_cost(e['cost']):>11}")
+        print()
+
     billed = sum(totals[k] for k in ("in", "out", "cr", "cw5", "cw1"))
     print(f"Total billed tokens: {fmt_tokens(billed)}")
     print(f"Total cost (USD, public rates): {fmt_cost(total_cost)}")
