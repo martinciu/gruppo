@@ -1,2 +1,5 @@
 .DS_Store
 tmp/
+
+# Skill-creator eval workspaces — run output, not source
+plugins/*/skills/*-workspace/
