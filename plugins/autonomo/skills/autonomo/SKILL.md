@@ -7,8 +7,7 @@ description: Use when the user types `/autonomo <prompt>` to autonomously turn a
 
 `/autonomo <prompt>` takes a freeform task description and runs the full `superpowers` pipeline — brainstorm a spec, write a plan, execute the plan, open a PR — without prompting the user. The user is not watching: subagents make best-effort decisions on small calls and bail with `BLOCKED:` only on high-stakes ambiguity. On success it prints a PR URL; on bail it leaves the branch and a one-page report at `.autonomo/<slug>-<timestamp>.md`.
 
-**Runtime artifacts:** Logs and bail reports go in `.autonomo/<slug>-<RUN_TIMESTAMP>.{log,md}`. Add `.autonomo/` to your repo's `.gitignore` — these files are per-run and never committed.
-- (User preferences for artifact location override this default.)
+**Runtime artifacts:** logs and bail reports go in `.autonomo/<slug>-<RUN_TIMESTAMP>.{log,md}`. Add `.autonomo/` to your repo's `.gitignore` — these files are per-run and never committed. (User preferences for artifact location override this default.)
 
 ## When to use
 
@@ -23,70 +22,9 @@ Do NOT use it for:
 
 ## Run log
 
-Every `/autonomo` run writes a structured log to `.autonomo/<slug>-<RUN_TIMESTAMP>.log`. The log opens at the start of the run (not only on bail) and grows monotonically. It serves three audiences with one artifact:
+Every run writes a structured log to `.autonomo/<slug>-<RUN_TIMESTAMP>.log` and a parallel pretty stream to stdout. Both surfaces are written by `scripts/emit.sh`; the controller and every subagent emit through it. The full subcommand list, stdout shapes, structured-line format, and canonical stage vocabulary live in `references/run-log.md`.
 
-- **Live main session** — both the controller and each subagent print pretty lines to stdout. Controller lines (`→ Phase K/3 …`) appear in the top-level transcript; subagent lines (`→ stage <name>`, `· stage <name> · K/N`, …) appear inside the nested Agent transcript view while a phase is running. Together they give the watching user granular per-stage progress without needing a tail.
-- **tmux tailer** — `tail -f .autonomo/<slug>-<RUN_TIMESTAMP>.log` from another pane shows structured events as they happen. Useful when the user is not watching the Claude Code session live.
-- **Headless / post-mortem** — the structured format is grep-friendly for after-the-fact inspection. The on-bail report (see "Failure handling") becomes a derived summary; the log is the canonical artifact.
-
-**Controller stdout format (pretty, top-level transcript):**
-
-- `→ Phase K/3 · <name> · <verb>` — start / in-progress
-- `✓ Phase K/3 · <name> · <duration> · <key=value …>` — completion
-- `✗ Phase K/3 · <name> · BLOCKED · <reason>` — bail
-
-**Subagent stdout format (pretty, nested transcript):** see autonomy directive rule 5 for the per-event shape.
-
-**Log file format (structured):**
-
-Each line is `<iso8601-utc> level=<info|warn|error> phase=<name> event=<verb> [key=value …]`. One event per line.
-
-**Emission pattern.** At every emission point, write both surfaces — pretty stdout *and* structured log line:
-
-```bash
-TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-echo "→ Phase 1/3 · brainstorm · dispatching"
-echo "${TS} level=info phase=brainstorm event=dispatch_start" >> "${AUTONOMO_LOG}"
-```
-
-Both writes are required at every event. The structured line keeps the tmux / post-mortem audiences fed; the stdout line keeps the live audience fed. Subagents follow the same dual-write rule for their `stage_*` and `assumption` events (rule 5).
-
-## Canonical stage vocabulary
-
-Closed enum of stage names per phase. Subagents append structured events to `${AUTONOMO_LOG}` using these names — see autonomy directive rule 5.
-
-**Stage event format:**
-
-```
-<ts> level=info phase=<name> event=stage_start    stage=<canonical-name>
-<ts> level=info phase=<name> event=stage_progress stage=<canonical-name> done=<n> [total=<n>]
-<ts> level=info phase=<name> event=stage_end      stage=<canonical-name> [duration_s=<n>]
-```
-
-**Assumption event format** (separate from stages):
-
-```
-<ts> level=info phase=<name> event=assumption    question="<one line>" answer="<one line>"
-```
-
-`question=` is the clarifying question the subagent would have asked the user; `answer=` is the call it made instead. Both fields are required — the question is what makes the assumption auditable.
-
-**Stages per phase:**
-
-| Phase | Canonical stages |
-|-------|------------------|
-| `brainstorm` | `clarify`, `propose`, `design`, `write` |
-| `plan` | `outline`, `tasks`, `review` |
-| `execute` | `tasks` (one stage for the whole phase; emit `stage_progress done=K total=N` after each plan task is committed) |
-
-Execute uses a single stage rather than per-task sub-stages because the existing top-level `event=commit` already marks each task's completion, and the developer's motivating signal is task-level (`4/10`). The `phase=execute stage=tasks` collision with `phase=plan stage=tasks` is intentional and acceptable — `phase=` disambiguates.
-
-**Counter rules:**
-
-- `total=` is included only when the total is knowable up front. Execute knows from the plan task count. Brainstorm `clarify` does not — emits `done=N` only.
-- `done=` is monotonic within a stage.
-
-**Sub-step timing:** Tail consumers derive durations from `stage_start` / `stage_end` timestamps. `stage_end` may carry `duration_s=<n>` for convenience but is not required to.
+The two surfaces feed three audiences with one artifact: the watching user (top-level + nested transcripts), a tmux tailer (`tail -f` on the log), and post-mortem grep against the structured lines. Skipping either surface defeats one audience.
 
 ## Procedure
 
@@ -113,6 +51,15 @@ gh auth status >/dev/null 2>&1 || { echo "BLOCKED: gh not authenticated; run 'gh
 ```
 
 The `superpowers` plugin is also a hard requirement, but plugin presence isn't shell-checkable — the dispatcher will surface it when the first Agent tool call fails.
+
+**Capture skill paths.** The skill loader announces this skill's base directory at the top of the loaded content (`Base directory for this skill: <path>`). Capture it for use throughout the run:
+
+```bash
+SKILL_DIR="<base directory announced by the loader>"
+AUTONOMO_EMIT="${SKILL_DIR}/scripts/emit.sh"
+```
+
+`AUTONOMO_EMIT` and `AUTONOMO_LOG` (set in step 3) are passed in every subagent dispatch prompt; subagents source the directive from `${SKILL_DIR}/references/autonomy-directive.md`.
 
 ### 2. Parse input
 
@@ -160,81 +107,78 @@ fi
 
 Store the resulting branch name as `BRANCH_NAME` — the PR opener step uses it. In the new-branch cases this is `autonomo/<slug>`; in the reuse-existing-branch case it's the current branch name.
 
-**Open the run log.** Once `SLUG` and `RUN_TIMESTAMP` exist and the branch is created, open the log file. Subsequent emissions (phase markers, artifact echoes, errors) write to both stdout and this file:
+**Open the run log.** Once `SLUG`, `RUN_TIMESTAMP`, and `BRANCH_NAME` exist:
 
 ```bash
-AUTONOMO_LOG_DIR=".autonomo"
-mkdir -p "$AUTONOMO_LOG_DIR"
-AUTONOMO_LOG="$AUTONOMO_LOG_DIR/${SLUG}-${RUN_TIMESTAMP}.log"
-TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-echo "${TS} level=info phase=preflight event=run_start branch=${BRANCH_NAME}" >> "${AUTONOMO_LOG}"
-echo "→ /autonomo · run started"
+mkdir -p .autonomo
+export AUTONOMO_LOG=".autonomo/${SLUG}-${RUN_TIMESTAMP}.log"
+bash "${AUTONOMO_EMIT}" run-start "${BRANCH_NAME}"
 echo "  log:        ${AUTONOMO_LOG}"
 echo "  tail live:  tail -f ${AUTONOMO_LOG}"
 ```
 
-`AUTONOMO_LOG` is referenced by every subsequent emission in this skill.
+`AUTONOMO_LOG` and `AUTONOMO_EMIT` are referenced by every subsequent emission and passed to every subagent.
 
 ### 4. Dispatch phase subagents
 
-Dispatch three subagents in sequence using the Agent tool. Each invocation passes the autonomy directive (verbatim, see below) plus phase-specific context. After each return, check whether the output starts with `BLOCKED:` — that is the controlled-failure marker. Anything else (subagent crash, tool error) is uncontrolled failure; treat both the same way. The PR-open phase is handled by the controller directly — see §5.
+Dispatch three subagents in sequence using the Agent tool. Each invocation passes the autonomy directive (verbatim — read from `${SKILL_DIR}/references/autonomy-directive.md`) plus the dispatch prompt. After each return, check whether the output starts with `BLOCKED:` — that is the controlled-failure marker. Anything else (subagent crash, tool error) is uncontrolled failure; treat both the same way. The PR-open phase is handled by the controller directly — see §5.
 
-Each phase wraps the Agent call in identical emission scaffolding: a phase-start marker before dispatch, a phase-end marker after a successful return (with duration and key artifacts), or a bail marker if the return starts with `BLOCKED:`. Both surfaces (pretty stdout + structured log) are written at every emission point — see `## Run log` for the format.
+Every dispatch prompt body must include:
 
-Each Agent prompt below inlines `AUTONOMO_LOG=<path>` literally — Agent-tool subagents don't inherit the controller's environment, so the path the directive's rule 5 references must be passed in the prompt body.
+```
+AUTONOMO_LOG=<absolute path>
+AUTONOMO_EMIT=<absolute path>
+```
+
+so the subagent can `export` them at the top of every bash session it spawns.
+
+The wrapper around each Agent call is the same three lines — phase-start before dispatch, phase-end on success (with duration and key artifacts), or phase-bail if the return starts with `BLOCKED:`. The script writes both surfaces; do not echo by hand.
 
 #### 4.1. Brainstorm
 
 ```bash
 PHASE_START=$(date +%s)
-TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-echo "→ Phase 1/3 · brainstorm · dispatching"
-echo "${TS} level=info phase=brainstorm event=dispatch_start" >> "${AUTONOMO_LOG}"
+bash "${AUTONOMO_EMIT}" phase-start brainstorm 1 3
 ```
 
-Dispatch the Agent tool with prompt: `"Run the superpowers:brainstorming skill on this task. Produce a spec. Task: <prompt>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive (verbatim). Substitute the actual log path from the controller's `$AUTONOMO_LOG` at dispatch time.
+Dispatch the Agent tool with prompt: `"Run the superpowers:brainstorming skill on this task. Produce a spec. Task: <prompt>. AUTONOMO_LOG=${AUTONOMO_LOG}  AUTONOMO_EMIT=${AUTONOMO_EMIT}"` plus the autonomy directive (verbatim).
 
-On a non-`BLOCKED:` return, parse `SPEC_PATH` and `ASSUMPTIONS_COUNT` from the subagent's output, then emit:
+On a non-`BLOCKED:` return, parse `SPEC_PATH` and `ASSUMPTIONS_COUNT` from the subagent's output, then:
 
 ```bash
-PHASE_END=$(date +%s); DURATION=$((PHASE_END - PHASE_START))
-TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-echo "✓ Phase 1/3 · brainstorm · ${DURATION}s · spec=${SPEC_PATH} · ${ASSUMPTIONS_COUNT} assumptions"
-echo "${TS} level=info phase=brainstorm event=dispatch_end duration_s=${DURATION} spec=${SPEC_PATH} assumptions=${ASSUMPTIONS_COUNT}" >> "${AUTONOMO_LOG}"
+DURATION=$(( $(date +%s) - PHASE_START ))
+bash "${AUTONOMO_EMIT}" phase-end brainstorm 1 3 ${DURATION} \
+     spec=${SPEC_PATH} assumptions=${ASSUMPTIONS_COUNT}
 ```
 
-If the return starts with `BLOCKED:`, emit instead:
+If the return starts with `BLOCKED:`:
 
 ```bash
-TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-echo "✗ Phase 1/3 · brainstorm · BLOCKED · <reason>"
-echo "${TS} level=warn phase=brainstorm event=blocked reason=\"<reason>\"" >> "${AUTONOMO_LOG}"
+bash "${AUTONOMO_EMIT}" phase-bail brainstorm 1 3 "<reason>"
 ```
 
 Then jump to §5 with the bail path. Do not proceed to §4.2.
 
 #### 4.2. Plan
 
-Identical scaffold to §4.1, with `phase=plan` and `Phase 2/3` in the markers. Dispatch prompt: `"Run the superpowers:writing-plans skill against the spec at <SPEC_PATH>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive. On non-`BLOCKED:` return, parse `PLAN_PATH` and emit `plan=${PLAN_PATH}` in the dispatch_end line in place of the brainstorm `spec=…` field.
+Identical scaffold to §4.1, with `phase=plan` and phase index `2 3`. Dispatch prompt: `"Run the superpowers:writing-plans skill against the spec at <SPEC_PATH>. AUTONOMO_LOG=${AUTONOMO_LOG}  AUTONOMO_EMIT=${AUTONOMO_EMIT}"` plus the directive. On non-`BLOCKED:` return, parse `PLAN_PATH` and pass `plan=${PLAN_PATH}` to `phase-end` in place of the brainstorm `spec=…` field.
 
 #### 4.3. Execute
 
-Identical scaffold to §4.1, with `phase=execute` and `Phase 3/3` in the markers. Capture the branch base before dispatch:
+Identical scaffold to §4.1, with `phase=execute` and phase index `3 3`. Capture the branch base before dispatch:
 
 ```bash
 BRANCH_BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master)
 ```
 
-Dispatch prompt: `"Run the superpowers:executing-plans skill against the plan at <PLAN_PATH>. Commit each task as you go on the current branch. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive.
+Dispatch prompt: `"Run the superpowers:executing-plans skill against the plan at <PLAN_PATH>. Commit each task as you go on the current branch. AUTONOMO_LOG=${AUTONOMO_LOG}  AUTONOMO_EMIT=${AUTONOMO_EMIT}"` plus the directive.
 
-On non-`BLOCKED:` return, emit the dispatch_end line, then echo each new commit:
+On non-`BLOCKED:` return, run `phase-end`, then echo each new commit:
 
 ```bash
-for sha in $(git log "${BRANCH_BASE}..HEAD" --format='%H'); do
+for sha in $(git log "${BRANCH_BASE}..HEAD" --format='%H' --reverse); do
   msg=$(git show --no-patch --format='%s' "$sha")
-  TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  echo "  · commit ${sha:0:7} · ${msg}"
-  echo "${TS} level=info phase=execute event=commit sha=${sha} subject=\"${msg}\"" >> "${AUTONOMO_LOG}"
+  bash "${AUTONOMO_EMIT}" commit "$sha" "$msg"
 done
 ```
 
@@ -261,42 +205,7 @@ If the push or `gh pr create` fails, fall through to the report writer with phas
 
 **On bail** (any phase returned `BLOCKED:` or errored):
 
-Write `.autonomo/<slug>-<RUN_TIMESTAMP>.md`. Create the directory if needed. Use the report format under "Failure handling". Do not push, do not open a PR. Print the report path to the user. Leave the branch / worktree in place.
-
-## The autonomy directive
-
-Pass this block verbatim to every dispatched subagent. The wording is load-bearing — it is the only thing converting normal user-gated skills into autonomous ones.
-
-> You are running inside `/autonomo`, an unattended pipeline. The user is not watching. Rules:
->
-> 1. Make best-effort decisions on small calls — naming, file layout, minor refactors, deprecation idioms, **and scope ambiguities inside a clearly-scoped task** (e.g. which files to include in a rename, which interpretation to pick when an item could fit either side). When the task is clear about *what* to do but ambiguous about *which*, pick the most reasonable interpretation and proceed. Surface every such call in your final output under an `## Assumptions` heading as a `Q:` / `A:` pair — `Q:` is the clarifying question you would have asked the user if you could; `A:` is the answer you chose. The `Q:` line is what makes the assumption auditable: a reader (or an eval grader) needs to see what the ambiguity was, not just how you resolved it.
->
->     **Test for whether to surface a Q: "could a reasonable person have chosen differently?", not "does the answer feel obvious?"** Things like the exact name of a new script (`slugify.sh` vs `derive-slug.sh`), whether a new flag's scope extends to an adjacent surface (a `--quiet`-style flag covering one log channel vs all of them), where a new snippet renders inside a longer document — these all *feel* obvious in retrospect but are genuine forks another author would have taken differently. Log them. The trap is eliding the Q because the answer felt natural to you; the auditor doesn't share your context, so without the Q they cannot tell whether a real choice was made or whether the issue was missed entirely.
->
->     Do NOT escalate detail-level scope ambiguity to `BLOCKED:`.
-> 2. If a decision is high-stakes — data migration, **external API contract change** (HTTP routes, schema, exports crossing package boundaries), anything touching auth / billing / security, or destructive ops — stop and return `BLOCKED:` followed by one paragraph explaining what blocked you. Do not ask the user. Internal renames within a single package, including type renames, are not "API contract changes" for this rule's purposes.
-> 3. If the task itself has no actionable scope (vague one-liner with no concrete deliverable, referenced file missing entirely), return `BLOCKED:` and stop.
-> 4. Skip any "ask the user" or "wait for approval" gates in the skills you invoke — your output IS the decision.
-> 5. Emit progress events on **two surfaces** as you work — the structured log file and your own stdout. Use the canonical stage vocabulary defined under "Canonical stage vocabulary" in the `/autonomo` SKILL for your phase. Both writes are required at every event: the structured line keeps tmux / post-mortem audiences fed; the stdout line keeps the watching user fed via the nested Agent transcript view, which is the live surface that replaces a separate tail pane.
->
->     - `stage_start` when you enter a canonical stage:
->
->       ```bash
->       TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
->       echo "→ stage <name>"
->       echo "${TS} level=info phase=<your-phase> event=stage_start stage=<name>" >> "${AUTONOMO_LOG}"
->       ```
->
->     - `stage_progress done=K [total=N]` when you cross a counted milestone within a stage (each plan task during execute, each clarifying question during brainstorm `clarify`, etc.). Omit `total=` when not knowable up front. Stdout form: `· stage <name> · K/N` (or `· stage <name> · K` when `total=` is omitted).
->     - `stage_end [duration_s=<n>]` when you leave the stage. `duration_s=` is optional in the structured line; tail consumers derive it from timestamps when omitted. Stdout form: `✓ stage <name>` (append ` · <duration>s` when you have it).
->     - `event=assumption question="<one line>" answer="<one line>"` the *moment* you make a best-effort scope-ambiguity call (rule 1), in addition to surfacing the same `Q:` / `A:` pair in the `## Assumptions` section of your final return. Stdout form: `! assumption · Q: <one line> · A: <one line>`. **All three surfaces are 1:1: every Q in your final spec's `## Assumptions` section has a matching structured log line and a matching stdout pretty line, including assumptions you only realize you made during a later stage like `write`.** Emit the log/stdout pair under whatever stage you are currently in when you notice the call; do not retroactively reorder under `clarify`.
->
->     Free-form `event=progress message="<one line>"` is retained as an escape hatch for updates that don't fit a stage milestone; mirror it to stdout as `· <one line>`.
->
->     Without the structured writes, tmux tailers and headless logs see silence during multi-minute phases. Without the stdout mirror, the watching user sees silence in the nested transcript while a phase grinds for minutes — and there is no TodoWrite list filling that gap. Skipping either surface defeats one audience.
-> 6. Do not invoke `/autonomo` recursively.
-
-The pressure scenarios in `pressure-scenarios/` exist to verify these rules under realistic conditions. Re-run them before bumping the skill's `version`.
+Write `.autonomo/<slug>-<RUN_TIMESTAMP>.md`. Create the directory if needed. Use the report format under "## Failure handling". Do not push, do not open a PR. Print the report path to the user. Leave the branch / worktree in place.
 
 ## PR body template
 
@@ -364,14 +273,10 @@ Notes:
 
 No retry. No rollback. Bail on first failure. Leave artifacts in place — the report is a one-page summary, the log is the full event history. The user inspects either, fixes input or environment, and re-runs.
 
-## Pressure scenarios
+## Bundled resources
 
-The autonomy directive is load-bearing prose — every word converts user-gated skills into autonomous ones, and small wording changes can over-trigger `BLOCKED:` (subagents bail on every ambiguity) or under-trigger it (subagents push past genuinely high-stakes calls). `pressure-scenarios/` holds one scenario per rule, each with a task input, a RED expectation (baseline behavior without the directive), and a GREEN expectation (behavior with the directive in place).
-
-Re-run them after any edit to the directive:
-
-1. Pick a scenario file under `pressure-scenarios/`.
-2. Dispatch a subagent (`Agent` tool, `subagent_type=general-purpose`) with the directive block from this SKILL plus the scenario's "Task input".
-3. Compare the return against the scenario's GREEN expectation. If it matches, the directive still holds for that rule; if it matches RED, the directive regressed.
-
-Each scenario lists its own "Rerun trigger" — at minimum re-run the scenarios whose rerun trigger covers the wording you touched.
+- `references/autonomy-directive.md` — verbatim block passed to every dispatched subagent. The wording is load-bearing; pressure scenarios under `pressure-scenarios/` test the rules.
+- `references/run-log.md` — full subcommand reference and structured-line shapes for `scripts/emit.sh`, plus the canonical stage vocabulary.
+- `references/maintenance.md` — how to re-run pressure scenarios after editing the directive, and when to bump `plugin.json` `version`.
+- `scripts/emit.sh` — the dual-write helper. `bash scripts/emit.sh --help` prints the subcommand list.
+- `pressure-scenarios/` — one scenario per directive rule, each with RED (no-directive baseline) and GREEN (directive-in-place) expectations.
