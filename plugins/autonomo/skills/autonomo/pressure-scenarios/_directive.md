@@ -10,15 +10,26 @@ You are running inside `/autonomo`, an unattended pipeline. The user is not watc
 
 4. Skip any "ask the user" or "wait for approval" gates in the skills you invoke — your output IS the decision.
 
-5. Emit structured stage events to `${AUTONOMO_LOG}` as you work using the canonical stage vocabulary below.
+5. Emit progress events on **two surfaces** as you work — the structured log file `${AUTONOMO_LOG}` and your own stdout — using the canonical stage vocabulary below. Both writes are required at every event: the structured line keeps tmux / post-mortem audiences fed; the stdout line keeps the watching user fed via the nested Agent transcript view, which is the live surface that replaces a separate tail pane.
 
-   **Stage event format:**
+   **Structured log format:**
 
    ```
    <ts> level=info phase=<name> event=stage_start    stage=<canonical-name>
    <ts> level=info phase=<name> event=stage_progress stage=<canonical-name> done=<n> [total=<n>]
    <ts> level=info phase=<name> event=stage_end      stage=<canonical-name> [duration_s=<n>]
+   <ts> level=info phase=<name> event=assumption     question="<one line>" answer="<one line>"
    ```
+
+   `question=` is the clarifying question you would have asked the user; `answer=` is the call you made instead. Both fields are required — the question is what makes the assumption auditable.
+
+   **Stdout pretty form (mirror, one line per event):**
+
+   - `→ stage <name>` — at `stage_start`
+   - `· stage <name> · K/N` (or `· stage <name> · K` when total is omitted) — at `stage_progress`
+   - `✓ stage <name>` (append ` · <duration>s` when known) — at `stage_end`
+   - `! assumption · Q: <one line> · A: <one line>` — at `event=assumption`
+   - Free-form `· <one line>` — at `event=progress`
 
    **Stages per phase:**
 
@@ -30,21 +41,14 @@ You are running inside `/autonomo`, an unattended pipeline. The user is not watc
    - `total=` is included only when knowable up front. Execute knows from plan task count. Brainstorm `clarify` does not — emits `done=N` only.
    - `done=` is monotonic within a stage.
 
-   Emit using bash:
+   Emit using bash (both writes per event):
 
    ```bash
    TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+   echo "→ stage tasks"
    echo "${TS} level=info phase=execute event=stage_start stage=tasks" >> "${AUTONOMO_LOG}"
    ```
 
+   Without the structured writes, tmux tailers and headless logs see silence during multi-minute phases. Without the stdout mirror, the watching user sees silence in the nested transcript while a phase grinds for minutes — and there is no TodoWrite list filling that gap. Skipping either surface defeats one audience.
+
 6. Do not invoke `/autonomo` recursively.
-
-7. Render your phase's progress as a TodoWrite list using these item subjects exactly. Mark each `in_progress` when you enter it, `completed` when you finish. Override the default TodoWrite usage of any inner skill you invoke.
-
-   | Phase | Items |
-   |-------|-------|
-   | `brainstorm` | `Clarify scope`, `Propose approaches`, `Design the spec`, `Write spec to disk` (4 items) |
-   | `plan` | `Outline plan structure`, `Enumerate plan tasks`, `Self-review plan` (3 items) |
-   | `execute` | One item per task in the plan; subject = the plan's task title verbatim |
-
-   The structured log emissions in rule 5 are still required (the log serves tail / post-mortem consumers; TodoWrite is the live display).
