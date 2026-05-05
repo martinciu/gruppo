@@ -177,7 +177,7 @@ echo "  tail live:  tail -f ${AUTONOMO_LOG}"
 
 ### 4. Dispatch phase subagents
 
-Dispatch three subagents in sequence using the Agent tool. Each invocation passes the autonomy directive (verbatim, see below) plus phase-specific context. After each return, check whether the output starts with `BLOCKED:` — that is the controlled-failure marker. Anything else (subagent crash, tool error) is uncontrolled failure; treat both the same way. The PR-open phase is handled by the controller directly — see §5.
+Dispatch three subagents in sequence using the Agent tool. Each invocation passes the autonomy directive — the contents of [`pressure-scenarios/_directive.md`](pressure-scenarios/_directive.md), read verbatim — plus phase-specific context. Load that file once at the start of §4 (it is a sibling of this SKILL.md) and reuse the same payload across all three dispatches. After each return, check whether the output starts with `BLOCKED:` — that is the controlled-failure marker. Anything else (subagent crash, tool error) is uncontrolled failure; treat both the same way. The PR-open phase is handled by the controller directly — see §5.
 
 Each phase wraps the Agent call in identical emission scaffolding: a phase-start marker before dispatch, a phase-end marker after a successful return (with duration and key artifacts), or a bail marker if the return starts with `BLOCKED:`. Both surfaces (pretty stdout + structured log) are written at every emission point — see `## Run log` for the format.
 
@@ -192,7 +192,7 @@ echo "→ Phase 1/3 · brainstorm · dispatching"
 echo "${TS} level=info phase=brainstorm event=dispatch_start" >> "${AUTONOMO_LOG}"
 ```
 
-Dispatch the Agent tool with prompt: `"Run the superpowers:brainstorming skill on this task. Produce a spec. Task: <prompt>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive (verbatim). Substitute the actual log path from the controller's `$AUTONOMO_LOG` at dispatch time.
+Dispatch the Agent tool with prompt: `"Run the superpowers:brainstorming skill on this task. Produce a spec. Task: <prompt>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive. Substitute the actual log path from the controller's `$AUTONOMO_LOG` at dispatch time.
 
 On a non-`BLOCKED:` return, parse `SPEC_PATH` and `ASSUMPTIONS_COUNT` from the subagent's output, then emit:
 
@@ -265,38 +265,9 @@ Write `.autonomo/<slug>-<RUN_TIMESTAMP>.md`. Create the directory if needed. Use
 
 ## The autonomy directive
 
-Pass this block verbatim to every dispatched subagent. The wording is load-bearing — it is the only thing converting normal user-gated skills into autonomous ones.
+The autonomy directive lives at [`pressure-scenarios/_directive.md`](pressure-scenarios/_directive.md) — six rules that convert normal user-gated skills into autonomous ones. The controller reads that file at dispatch time (§4) and passes its contents verbatim to every subagent; the pressure scenarios under `pressure-scenarios/` exercise the same file. Co-locating the dispatch payload with the test payload keeps the two in sync — there is no separate verbatim copy in this SKILL that can drift.
 
-> You are running inside `/autonomo`, an unattended pipeline. The user is not watching. Rules:
->
-> 1. Make best-effort decisions on small calls — naming, file layout, minor refactors, deprecation idioms, **and scope ambiguities inside a clearly-scoped task** (e.g. which files to include in a rename, which interpretation to pick when an item could fit either side). When the task is clear about *what* to do but ambiguous about *which*, pick the most reasonable interpretation and proceed. Surface every such call in your final output under an `## Assumptions` heading as a `Q:` / `A:` pair — `Q:` is the clarifying question you would have asked the user if you could; `A:` is the answer you chose. The `Q:` line is what makes the assumption auditable: a reader (or an eval grader) needs to see what the ambiguity was, not just how you resolved it.
->
->     **Test for whether to surface a Q: "could a reasonable person have chosen differently?", not "does the answer feel obvious?"** Things like the exact name of a new script (`slugify.sh` vs `derive-slug.sh`), whether a new flag's scope extends to an adjacent surface (a `--quiet`-style flag covering one log channel vs all of them), where a new snippet renders inside a longer document — these all *feel* obvious in retrospect but are genuine forks another author would have taken differently. Log them. The trap is eliding the Q because the answer felt natural to you; the auditor doesn't share your context, so without the Q they cannot tell whether a real choice was made or whether the issue was missed entirely.
->
->     Do NOT escalate detail-level scope ambiguity to `BLOCKED:`.
-> 2. If a decision is high-stakes — data migration, **external API contract change** (HTTP routes, schema, exports crossing package boundaries), anything touching auth / billing / security, or destructive ops — stop and return `BLOCKED:` followed by one paragraph explaining what blocked you. Do not ask the user. Internal renames within a single package, including type renames, are not "API contract changes" for this rule's purposes.
-> 3. If the task itself has no actionable scope (vague one-liner with no concrete deliverable, referenced file missing entirely), return `BLOCKED:` and stop.
-> 4. Skip any "ask the user" or "wait for approval" gates in the skills you invoke — your output IS the decision.
-> 5. Emit progress events on **two surfaces** as you work — the structured log file and your own stdout. Use the canonical stage vocabulary defined under "Canonical stage vocabulary" in the `/autonomo` SKILL for your phase. Both writes are required at every event: the structured line keeps tmux / post-mortem audiences fed; the stdout line keeps the watching user fed via the nested Agent transcript view, which is the live surface that replaces a separate tail pane.
->
->     - `stage_start` when you enter a canonical stage:
->
->       ```bash
->       TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
->       echo "→ stage <name>"
->       echo "${TS} level=info phase=<your-phase> event=stage_start stage=<name>" >> "${AUTONOMO_LOG}"
->       ```
->
->     - `stage_progress done=K [total=N]` when you cross a counted milestone within a stage (each plan task during execute, each clarifying question during brainstorm `clarify`, etc.). Omit `total=` when not knowable up front. Stdout form: `· stage <name> · K/N` (or `· stage <name> · K` when `total=` is omitted).
->     - `stage_end [duration_s=<n>]` when you leave the stage. `duration_s=` is optional in the structured line; tail consumers derive it from timestamps when omitted. Stdout form: `✓ stage <name>` (append ` · <duration>s` when you have it).
->     - `event=assumption question="<one line>" answer="<one line>"` the *moment* you make a best-effort scope-ambiguity call (rule 1), in addition to surfacing the same `Q:` / `A:` pair in the `## Assumptions` section of your final return. Stdout form: `! assumption · Q: <one line> · A: <one line>`. **All three surfaces are 1:1: every Q in your final spec's `## Assumptions` section has a matching structured log line and a matching stdout pretty line, including assumptions you only realize you made during a later stage like `write`.** Emit the log/stdout pair under whatever stage you are currently in when you notice the call; do not retroactively reorder under `clarify`.
->
->     Free-form `event=progress message="<one line>"` is retained as an escape hatch for updates that don't fit a stage milestone; mirror it to stdout as `· <one line>`.
->
->     Without the structured writes, tmux tailers and headless logs see silence during multi-minute phases. Without the stdout mirror, the watching user sees silence in the nested transcript while a phase grinds for minutes — and there is no TodoWrite list filling that gap. Skipping either surface defeats one audience.
-> 6. Do not invoke `/autonomo` recursively.
-
-The pressure scenarios in `pressure-scenarios/` exist to verify these rules under realistic conditions. Re-run them before bumping the skill's `version`.
+The wording is load-bearing. The pressure scenarios in `pressure-scenarios/` exist to verify the rules under realistic conditions; re-run them before bumping the skill's `version`.
 
 ## PR body template
 
@@ -371,7 +342,7 @@ The autonomy directive is load-bearing prose — every word converts user-gated 
 Re-run them after any edit to the directive:
 
 1. Pick a scenario file under `pressure-scenarios/`.
-2. Dispatch a subagent (`Agent` tool, `subagent_type=general-purpose`) with the directive block from this SKILL plus the scenario's "Task input".
+2. Dispatch a subagent (`Agent` tool, `subagent_type=general-purpose`) with the contents of `pressure-scenarios/_directive.md` (the canonical autonomy directive, verbatim) plus the scenario's "Task input".
 3. Compare the return against the scenario's GREEN expectation. If it matches, the directive still holds for that rule; if it matches RED, the directive regressed.
 
 Each scenario lists its own "Rerun trigger" — at minimum re-run the scenarios whose rerun trigger covers the wording you touched.
