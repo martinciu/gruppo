@@ -22,21 +22,23 @@ Do NOT use it for:
 
 Every `/autonomo` run writes a structured log to `tmp/autonomo/<slug>-<RUN_TIMESTAMP>.log`. The log opens at the start of the run (not only on bail) and grows monotonically. It serves three audiences with one artifact:
 
-- **Live main session** — the controller prints pretty lines to stdout in parallel; the user sees those.
-- **tmux tailer** — `tail -f tmp/autonomo/<slug>-<RUN_TIMESTAMP>.log` from another pane shows structured events as they happen.
+- **Live main session** — both the controller and each subagent print pretty lines to stdout. Controller lines (`→ Phase K/3 …`) appear in the top-level transcript; subagent lines (`→ stage <name>`, `· stage <name> · K/N`, …) appear inside the nested Agent transcript view while a phase is running. Together they give the watching user granular per-stage progress without needing a tail.
+- **tmux tailer** — `tail -f tmp/autonomo/<slug>-<RUN_TIMESTAMP>.log` from another pane shows structured events as they happen. Useful when the user is not watching the Claude Code session live.
 - **Headless / post-mortem** — the structured format is grep-friendly for after-the-fact inspection. The on-bail report (see "Failure handling") becomes a derived summary; the log is the canonical artifact.
 
-**Stdout format (pretty):**
+**Controller stdout format (pretty, top-level transcript):**
 
 - `→ Phase K/3 · <name> · <verb>` — start / in-progress
 - `✓ Phase K/3 · <name> · <duration> · <key=value …>` — completion
 - `✗ Phase K/3 · <name> · BLOCKED · <reason>` — bail
 
+**Subagent stdout format (pretty, nested transcript):** see autonomy directive rule 5 for the per-event shape.
+
 **Log file format (structured):**
 
 Each line is `<iso8601-utc> level=<info|warn|error> phase=<name> event=<verb> [key=value …]`. One event per line.
 
-**Emission pattern.** At every emission point, write both surfaces:
+**Emission pattern.** At every emission point, write both surfaces — pretty stdout *and* structured log line:
 
 ```bash
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -44,7 +46,7 @@ echo "→ Phase 1/3 · brainstorm · dispatching"
 echo "${TS} level=info phase=brainstorm event=dispatch_start" >> "${AUTONOMO_LOG}"
 ```
 
-Both writes are required. Skipping the structured write breaks tmux/headless surfaces; skipping the pretty write breaks the live session.
+Both writes are required at every event. The structured line keeps the tmux / post-mortem audiences fed; the stdout line keeps the live audience fed. Subagents follow the same dual-write rule for their `stage_*` and `assumption` events (rule 5).
 
 ## Canonical stage vocabulary
 
@@ -80,35 +82,6 @@ Execute uses a single stage rather than per-task sub-stages because the existing
 - `done=` is monotonic within a stage.
 
 **Sub-step timing:** Tail consumers derive durations from `stage_start` / `stage_end` timestamps. `stage_end` may carry `duration_s=<n>` for convenience but is not required to.
-
-## TodoWrite progress display
-
-Subagents and the controller render their progress as TodoWrite lists for the live UI display, alongside the structured log emissions in autonomy directive rule 5. The log is for tail / post-mortem (machine-readable); TodoWrite is the live display the user watches.
-
-Two surfaces produce TodoWrite lists during a run:
-
-- The **controller** renders a 3-item top-level phase list once at the end of §3 ("Pick workspace"), then updates it between phases (see §4 emission scaffolding).
-- Each **subagent** renders its own phase-specific list while it runs. The Agent tool's nested view shows the subagent's TodoWrite while the phase is active; between phases the controller's list is what the user sees.
-
-**Controller list** (3 items, fixed):
-
-| Subject | Lifecycle |
-|---------|-----------|
-| `Phase 1/3: Brainstorm` | `pending` initially → `in_progress` before §4.1 dispatch → `completed` on non-`BLOCKED:` return |
-| `Phase 2/3: Plan` | `pending` initially → `in_progress` before §4.2 dispatch → `completed` on non-`BLOCKED:` return |
-| `Phase 3/3: Execute` | `pending` initially → `in_progress` before §4.3 dispatch → `completed` on non-`BLOCKED:` return |
-
-On a `BLOCKED:` return, the in-progress phase item is left untouched. TodoWrite has no `failed` state — the existing `✗ Phase K/3 · BLOCKED · <reason>` stdout line and `event=blocked` log entry carry the failure signal.
-
-**Subagent lists** (per phase):
-
-| Phase | Items |
-|-------|-------|
-| `brainstorm` | `Clarify scope`, `Propose approaches`, `Design the spec`, `Write spec to disk` (4 items, one per canonical stage) |
-| `plan` | `Outline plan structure`, `Enumerate plan tasks`, `Self-review plan` (3 items, one per canonical stage) |
-| `execute` | One item per task in the plan; subject = the plan's task title verbatim (e.g. `Task 1: Add --flag option`) |
-
-Each subagent marks its own items `in_progress` when entering them, `completed` when finishing. Brainstorm and plan **override** the default TodoWrite usage of `superpowers:brainstorming` / `superpowers:writing-plans` (which would otherwise render their own internal checklists). Execute **aligns** with `superpowers:executing-plans`' natural one-task-per-item behavior, so no override is needed there.
 
 ## Procedure
 
@@ -196,19 +169,11 @@ echo "  tail live:  tail -f ${AUTONOMO_LOG}"
 
 `AUTONOMO_LOG` is referenced by every subsequent emission in this skill.
 
-**Initialize the controller's TodoWrite phase list.** Once the run log is open, set up the top-level 3-item progress display (see "## TodoWrite progress display"). Call the TodoWrite tool with three items, all `pending`:
-
-- `Phase 1/3: Brainstorm`
-- `Phase 2/3: Plan`
-- `Phase 3/3: Execute`
-
-This list is updated between phases by §4's emission scaffolding (mark `in_progress` before each dispatch, `completed` on non-`BLOCKED:` return).
-
 ### 4. Dispatch phase subagents
 
 Dispatch three subagents in sequence using the Agent tool. Each invocation passes the autonomy directive (verbatim, see below) plus phase-specific context. After each return, check whether the output starts with `BLOCKED:` — that is the controlled-failure marker. Anything else (subagent crash, tool error) is uncontrolled failure; treat both the same way. The PR-open phase is handled by the controller directly — see §5.
 
-Each phase wraps the Agent call in identical emission scaffolding: a phase-start marker before dispatch, a phase-end marker after a successful return (with duration and key artifacts), or a bail marker if the return starts with `BLOCKED:`. All three surfaces (stdout pretty + structured log) are written at every emission point — see `## Run log` for the format.
+Each phase wraps the Agent call in identical emission scaffolding: a phase-start marker before dispatch, a phase-end marker after a successful return (with duration and key artifacts), or a bail marker if the return starts with `BLOCKED:`. Both surfaces (pretty stdout + structured log) are written at every emission point — see `## Run log` for the format.
 
 Each Agent prompt below inlines `AUTONOMO_LOG=<path>` literally — Agent-tool subagents don't inherit the controller's environment, so the path the directive's rule 5 references must be passed in the prompt body.
 
@@ -221,8 +186,6 @@ echo "→ Phase 1/3 · brainstorm · dispatching"
 echo "${TS} level=info phase=brainstorm event=dispatch_start" >> "${AUTONOMO_LOG}"
 ```
 
-Then call the TodoWrite tool to mark `Phase 1/3: Brainstorm` as `in_progress`.
-
 Dispatch the Agent tool with prompt: `"Run the superpowers:brainstorming skill on this task. Produce a spec. Task: <prompt>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive (verbatim). Substitute the actual log path from the controller's `$AUTONOMO_LOG` at dispatch time.
 
 On a non-`BLOCKED:` return, parse `SPEC_PATH` and `ASSUMPTIONS_COUNT` from the subagent's output, then emit:
@@ -233,8 +196,6 @@ TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 echo "✓ Phase 1/3 · brainstorm · ${DURATION}s · spec=${SPEC_PATH} · ${ASSUMPTIONS_COUNT} assumptions"
 echo "${TS} level=info phase=brainstorm event=dispatch_end duration_s=${DURATION} spec=${SPEC_PATH} assumptions=${ASSUMPTIONS_COUNT}" >> "${AUTONOMO_LOG}"
 ```
-
-Then call the TodoWrite tool to mark `Phase 1/3: Brainstorm` as `completed`.
 
 If the return starts with `BLOCKED:`, emit instead:
 
@@ -248,11 +209,11 @@ Then jump to §5 with the bail path. Do not proceed to §4.2.
 
 #### 4.2. Plan
 
-Identical scaffold to §4.1, with `phase=plan`, `Phase 2/3` in the markers, and `Phase 2/3: Plan` as the controller's TodoWrite item subject. Dispatch prompt: `"Run the superpowers:writing-plans skill against the spec at <SPEC_PATH>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive. On non-`BLOCKED:` return, parse `PLAN_PATH` and emit `plan=${PLAN_PATH}` in the dispatch_end line in place of the brainstorm `spec=…` field.
+Identical scaffold to §4.1, with `phase=plan` and `Phase 2/3` in the markers. Dispatch prompt: `"Run the superpowers:writing-plans skill against the spec at <SPEC_PATH>. AUTONOMO_LOG=${AUTONOMO_LOG}"` plus the autonomy directive. On non-`BLOCKED:` return, parse `PLAN_PATH` and emit `plan=${PLAN_PATH}` in the dispatch_end line in place of the brainstorm `spec=…` field.
 
 #### 4.3. Execute
 
-Identical scaffold to §4.1, with `phase=execute`, `Phase 3/3` in the markers, and `Phase 3/3: Execute` as the controller's TodoWrite item subject. Capture the branch base before dispatch:
+Identical scaffold to §4.1, with `phase=execute` and `Phase 3/3` in the markers. Capture the branch base before dispatch:
 
 ```bash
 BRANCH_BASE=$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master)
@@ -306,24 +267,24 @@ Pass this block verbatim to every dispatched subagent. The wording is load-beari
 > 2. If a decision is high-stakes — data migration, **external API contract change** (HTTP routes, schema, exports crossing package boundaries), anything touching auth / billing / security, or destructive ops — stop and return `BLOCKED:` followed by one paragraph explaining what blocked you. Do not ask the user. Internal renames within a single package, including type renames, are not "API contract changes" for this rule's purposes.
 > 3. If the task itself has no actionable scope (vague one-liner with no concrete deliverable, referenced file missing entirely), return `BLOCKED:` and stop.
 > 4. Skip any "ask the user" or "wait for approval" gates in the skills you invoke — your output IS the decision.
-> 5. Emit structured stage events to `${AUTONOMO_LOG}` as you work. Use the canonical stage vocabulary defined under "Canonical stage vocabulary" in the `/autonomo` SKILL for your phase.
+> 5. Emit progress events on **two surfaces** as you work — the structured log file and your own stdout. Use the canonical stage vocabulary defined under "Canonical stage vocabulary" in the `/autonomo` SKILL for your phase. Both writes are required at every event: the structured line keeps tmux / post-mortem audiences fed; the stdout line keeps the watching user fed via the nested Agent transcript view, which is the live surface that replaces a separate tail pane.
 >
 >     - `stage_start` when you enter a canonical stage:
 >
 >       ```bash
 >       TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+>       echo "→ stage <name>"
 >       echo "${TS} level=info phase=<your-phase> event=stage_start stage=<name>" >> "${AUTONOMO_LOG}"
 >       ```
 >
->     - `stage_progress done=K [total=N]` when you cross a counted milestone within a stage (each plan task during execute, each clarifying question during brainstorm `clarify`, etc.). Omit `total=` when not knowable up front.
->     - `stage_end [duration_s=<n>]` when you leave the stage. `duration_s=` is optional; tail consumers derive it from timestamps when omitted.
->     - `event=assumption message="<one line>"` the *moment* you make a best-effort scope-ambiguity call (rule 1), in addition to surfacing it in the `## Assumptions` section of your final return.
+>     - `stage_progress done=K [total=N]` when you cross a counted milestone within a stage (each plan task during execute, each clarifying question during brainstorm `clarify`, etc.). Omit `total=` when not knowable up front. Stdout form: `· stage <name> · K/N` (or `· stage <name> · K` when `total=` is omitted).
+>     - `stage_end [duration_s=<n>]` when you leave the stage. `duration_s=` is optional in the structured line; tail consumers derive it from timestamps when omitted. Stdout form: `✓ stage <name>` (append ` · <duration>s` when you have it).
+>     - `event=assumption message="<one line>"` the *moment* you make a best-effort scope-ambiguity call (rule 1), in addition to surfacing it in the `## Assumptions` section of your final return. Stdout form: `! assumption · <one line>`.
 >
->     Free-form `event=progress message="<one line>"` is retained as an escape hatch for updates that don't fit a stage milestone.
+>     Free-form `event=progress message="<one line>"` is retained as an escape hatch for updates that don't fit a stage milestone; mirror it to stdout as `· <one line>`.
 >
->     Without these, tmux tailers and headless logs see silence during multi-minute phases.
+>     Without the structured writes, tmux tailers and headless logs see silence during multi-minute phases. Without the stdout mirror, the watching user sees silence in the nested transcript while a phase grinds for minutes — and there is no TodoWrite list filling that gap. Skipping either surface defeats one audience.
 > 6. Do not invoke `/autonomo` recursively.
-> 7. Render your phase's progress as a TodoWrite list using the items defined under "## TodoWrite progress display" in the `/autonomo` SKILL — use those item subjects exactly, marking each `in_progress` when you enter it and `completed` when you finish. Override the default TodoWrite usage of any inner skill you invoke. The structured log emissions in rule 5 are still required (the log serves tail / post-mortem consumers; TodoWrite is the live display).
 
 The pressure scenarios in `pressure-scenarios/` exist to verify these rules under realistic conditions. Re-run them before bumping the skill's `version`.
 

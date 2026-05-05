@@ -1,1 +1,0 @@
-Add a CLI command `wordcount` to a small Node tool that takes a file path and prints the number of whitespace-separated words to stdout. The tool already exists at `bin/tool.js`; commands are registered in a `commands` object keyed by name. Use only Node built-ins.
