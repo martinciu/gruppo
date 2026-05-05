@@ -78,8 +78,11 @@ Inspect git state, decide where the work goes. Refuse to start from a non-clean 
 
 **Slug derivation.** Compute `<slug>` once, used for both the branch name and the report filename:
 
-- Kebab-case the prompt, ASCII-only, max 40 chars (truncate at the last word boundary inside the limit).
-- If the slugified prompt comes out empty (emoji-only, all non-Latin script, punctuation-only): fall back to `auto-<unix-timestamp>`.
+```bash
+SLUG=$(bash "${SKILL_DIR}/scripts/slugify.sh" "$INPUT")
+```
+
+The script kebab-cases the prompt, restricts to ASCII, truncates to 40 chars at a word boundary, and falls back to `auto-<unix-timestamp>` if the slugified result is empty (emoji-only, non-Latin script, punctuation-only, blank input). The algorithm lives in `scripts/slugify.sh`; `scripts/tests/slugify.test.sh` is the cases it has to pass — re-run those tests after any edit.
 
 Capture `RUN_TIMESTAMP=$(date +%s)` once at this point — used later for the report filename if the run bails.
 
@@ -143,10 +146,11 @@ bash "${AUTONOMO_EMIT}" phase-start brainstorm 1 3
 
 Dispatch the Agent tool with prompt: `"Run the superpowers:brainstorming skill on this task. Produce a spec. Task: <prompt>. AUTONOMO_LOG=${AUTONOMO_LOG}  AUTONOMO_EMIT=${AUTONOMO_EMIT}"` plus the autonomy directive (verbatim).
 
-On a non-`BLOCKED:` return, parse `SPEC_PATH` and `ASSUMPTIONS_COUNT` from the subagent's output, then:
+On a non-`BLOCKED:` return, parse `SPEC_PATH` from the subagent's output. Derive `ASSUMPTIONS_COUNT` from the log directly — every assumption already lands as `event=assumption` (see directive rule 5), so scraping the prose return for it duplicates an authoritative source and breaks silently when the return format drifts.
 
 ```bash
 DURATION=$(( $(date +%s) - PHASE_START ))
+ASSUMPTIONS_COUNT=$(grep -c 'phase=brainstorm event=assumption' "${AUTONOMO_LOG}" || true)
 bash "${AUTONOMO_EMIT}" phase-end brainstorm 1 3 ${DURATION} \
      spec=${SPEC_PATH} assumptions=${ASSUMPTIONS_COUNT}
 ```
