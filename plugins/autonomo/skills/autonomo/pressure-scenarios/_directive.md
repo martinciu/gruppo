@@ -18,15 +18,17 @@ You are running inside `/autonomo`, an unattended pipeline. The user is not watc
    <ts> level=info phase=<name> event=stage_start    stage=<canonical-name>
    <ts> level=info phase=<name> event=stage_progress stage=<canonical-name> done=<n> [total=<n>]
    <ts> level=info phase=<name> event=stage_end      stage=<canonical-name> [duration_s=<n>]
-   <ts> level=info phase=<name> event=assumption     message="<one line>"
+   <ts> level=info phase=<name> event=assumption     question="<one line>" answer="<one line>"
    ```
+
+   `question=` is the clarifying question you would have asked the user; `answer=` is the call you made instead. Both fields are required — the question is what makes the assumption auditable.
 
    **Stdout pretty form (mirror, one line per event):**
 
    - `→ stage <name>` — at `stage_start`
    - `· stage <name> · K/N` (or `· stage <name> · K` when total is omitted) — at `stage_progress`
    - `✓ stage <name>` (append ` · <duration>s` when known) — at `stage_end`
-   - `! assumption · <one line>` — at `event=assumption`
+   - `! assumption · Q: <one line> · A: <one line>` — at `event=assumption`
    - Free-form `· <one line>` — at `event=progress`
 
    **Stages per phase:**

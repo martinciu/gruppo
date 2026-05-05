@@ -63,8 +63,10 @@ Closed enum of stage names per phase. Subagents append structured events to `${A
 **Assumption event format** (separate from stages):
 
 ```
-<ts> level=info phase=<name> event=assumption    message="<one line>"
+<ts> level=info phase=<name> event=assumption    question="<one line>" answer="<one line>"
 ```
+
+`question=` is the clarifying question the subagent would have asked the user; `answer=` is the call it made instead. Both fields are required — the question is what makes the assumption auditable.
 
 **Stages per phase:**
 
@@ -263,7 +265,11 @@ Pass this block verbatim to every dispatched subagent. The wording is load-beari
 
 > You are running inside `/autonomo`, an unattended pipeline. The user is not watching. Rules:
 >
-> 1. Make best-effort decisions on small calls — naming, file layout, minor refactors, deprecation idioms, **and scope ambiguities inside a clearly-scoped task** (e.g. which files to include in a rename, which interpretation to pick when an item could fit either side). When the task is clear about *what* to do but ambiguous about *which*, pick the most reasonable interpretation and proceed. Surface every assumption you made in your final output under an `## Assumptions` heading. Do NOT escalate detail-level scope ambiguity to `BLOCKED:`.
+> 1. Make best-effort decisions on small calls — naming, file layout, minor refactors, deprecation idioms, **and scope ambiguities inside a clearly-scoped task** (e.g. which files to include in a rename, which interpretation to pick when an item could fit either side). When the task is clear about *what* to do but ambiguous about *which*, pick the most reasonable interpretation and proceed. Surface every such call in your final output under an `## Assumptions` heading as a `Q:` / `A:` pair — `Q:` is the clarifying question you would have asked the user if you could; `A:` is the answer you chose. The `Q:` line is what makes the assumption auditable: a reader (or an eval grader) needs to see what the ambiguity was, not just how you resolved it.
+>
+>     **Test for whether to surface a Q: "could a reasonable person have chosen differently?", not "does the answer feel obvious?"** Things like the exact name of a new script (`slugify.sh` vs `derive-slug.sh`), whether a new flag's scope extends to an adjacent surface (a `--quiet`-style flag covering one log channel vs all of them), where a new snippet renders inside a longer document — these all *feel* obvious in retrospect but are genuine forks another author would have taken differently. Log them. The trap is eliding the Q because the answer felt natural to you; the auditor doesn't share your context, so without the Q they cannot tell whether a real choice was made or whether the issue was missed entirely.
+>
+>     Do NOT escalate detail-level scope ambiguity to `BLOCKED:`.
 > 2. If a decision is high-stakes — data migration, **external API contract change** (HTTP routes, schema, exports crossing package boundaries), anything touching auth / billing / security, or destructive ops — stop and return `BLOCKED:` followed by one paragraph explaining what blocked you. Do not ask the user. Internal renames within a single package, including type renames, are not "API contract changes" for this rule's purposes.
 > 3. If the task itself has no actionable scope (vague one-liner with no concrete deliverable, referenced file missing entirely), return `BLOCKED:` and stop.
 > 4. Skip any "ask the user" or "wait for approval" gates in the skills you invoke — your output IS the decision.
@@ -279,7 +285,7 @@ Pass this block verbatim to every dispatched subagent. The wording is load-beari
 >
 >     - `stage_progress done=K [total=N]` when you cross a counted milestone within a stage (each plan task during execute, each clarifying question during brainstorm `clarify`, etc.). Omit `total=` when not knowable up front. Stdout form: `· stage <name> · K/N` (or `· stage <name> · K` when `total=` is omitted).
 >     - `stage_end [duration_s=<n>]` when you leave the stage. `duration_s=` is optional in the structured line; tail consumers derive it from timestamps when omitted. Stdout form: `✓ stage <name>` (append ` · <duration>s` when you have it).
->     - `event=assumption message="<one line>"` the *moment* you make a best-effort scope-ambiguity call (rule 1), in addition to surfacing it in the `## Assumptions` section of your final return. Stdout form: `! assumption · <one line>`.
+>     - `event=assumption question="<one line>" answer="<one line>"` the *moment* you make a best-effort scope-ambiguity call (rule 1), in addition to surfacing the same `Q:` / `A:` pair in the `## Assumptions` section of your final return. Stdout form: `! assumption · Q: <one line> · A: <one line>`. **All three surfaces are 1:1: every Q in your final spec's `## Assumptions` section has a matching structured log line and a matching stdout pretty line, including assumptions you only realize you made during a later stage like `write`.** Emit the log/stdout pair under whatever stage you are currently in when you notice the call; do not retroactively reorder under `clarify`.
 >
 >     Free-form `event=progress message="<one line>"` is retained as an escape hatch for updates that don't fit a stage milestone; mirror it to stdout as `· <one line>`.
 >
