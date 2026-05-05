@@ -1,0 +1,94 @@
+{
+  "skill_name": "autonomo",
+  "phase": "brainstorm",
+  "purpose": "Grade Q/A surfacing under the autonomy directive: did the brainstormer ask the right clarifying questions (logged as Q:/A: pairs in ## Assumptions and as event=assumption in the log) and refrain from asking trivia?",
+  "evals": [
+    {
+      "id": 1,
+      "name": "keep-branch-flag",
+      "ambiguity_profile": "light",
+      "prompt": "Add a `--keep-branch` flag to autonomo that, on bail, suppresses the bail-report `.md` and just leaves the branch silently. The skill is at plugins/autonomo/skills/autonomo/SKILL.md.",
+      "expected_questions": [
+        {
+          "q": "Should --keep-branch also suppress the structured .log, or only the .md report?",
+          "a": "Only the .md report — the .log is for tail/post-mortem and cheap to keep."
+        },
+        {
+          "q": "Where does --keep-branch sit in the CLI — before or after the prompt?",
+          "a": "Before the prompt: /autonomo --keep-branch \"<task>\""
+        }
+      ],
+      "acceptable_extras": [
+        "Whether --keep-branch affects success runs (it should not)"
+      ],
+      "trivia_to_avoid": [
+        "Variable naming inside the implementation",
+        "Whether to use getopts vs manual parsing"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "extract-slugify",
+      "ambiguity_profile": "medium",
+      "prompt": "Extract the slug-derivation logic from §3 'Pick workspace' of the autonomo skill into a standalone shell script under scripts/, so we can unit-test it. The skill is at plugins/autonomo/skills/autonomo/SKILL.md.",
+      "expected_questions": [
+        {
+          "q": "What should the script be named?",
+          "a": "slugify.sh (name matches the operation)"
+        },
+        {
+          "q": "Does the SKILL.md still inline the algorithm or just reference the script?",
+          "a": "Reference only. Inline + script means two sources of truth that drift."
+        },
+        {
+          "q": "How does the script receive input — $1 argv or stdin?",
+          "a": "$1 argv — matches how the SKILL currently shows the inline form."
+        },
+        {
+          "q": "Where do tests live?",
+          "a": "scripts/tests/ as a sibling, simple bash runner."
+        }
+      ],
+      "acceptable_extras": [
+        "Whether the script should set -euo pipefail",
+        "Whether to test on macOS bash 3.2 vs newer"
+      ],
+      "trivia_to_avoid": [
+        "Indentation style",
+        "Whether to use printf vs echo"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "last-3-runs-header",
+      "ambiguity_profile": "sneaky",
+      "prompt": "Add a 'last 3 runs' summary block to the `→ /autonomo · run started` header that shows timestamps and outcomes (success / blocked / errored) of the previous three /autonomo runs on this branch. The skill is at plugins/autonomo/skills/autonomo/SKILL.md.",
+      "expected_questions": [
+        {
+          "q": "Where does the data come from — git log, existing tmp/autonomo/*.log files, or a new state file?",
+          "a": "Parse from existing tmp/autonomo/*.log files matching the current branch — no new state file."
+        },
+        {
+          "q": "How is each run's outcome derived from its .log?",
+          "a": "Last meaningful event: event=blocked → blocked; phase=execute event=dispatch_end with PR success → success; neither → errored/incomplete."
+        },
+        {
+          "q": "What if there are fewer than 3 prior runs (or zero)?",
+          "a": "Show however many exist; if zero, print '(no prior runs on this branch)'."
+        },
+        {
+          "q": "Is 'this branch' matched by branch name in the log, or by the slug-prefixed filename?",
+          "a": "Branch name (logged in event=run_start branch=…) — slug isn't a stable key across rephrasings."
+        }
+      ],
+      "acceptable_extras": [
+        "Output format (table vs bullets)",
+        "Whether to truncate timestamps to date-only"
+      ],
+      "trivia_to_avoid": [
+        "Color of stdout output",
+        "Whether to bold the timestamps"
+      ]
+    }
+  ]
+}
