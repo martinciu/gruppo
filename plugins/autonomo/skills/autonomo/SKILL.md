@@ -1,6 +1,6 @@
 ---
 name: autonomo
-description: Use when the user types `/autonomo <prompt>` to autonomously turn a freeform task description into a pull request. Runs the full superpowers pipeline (brainstorm → plan → execute → PR) without user interaction. For relatively simple tasks; reuses the current worktree or feature branch when clean, refuses on a dirty tree or a branch already carrying commits.
+description: Use when the user types `/autonomo <prompt>` to autonomously turn a freeform task description into a pull request without supervision. For well-scoped, single-package tasks; not for high-stakes work (auth, billing, security, data migration, external API contracts).
 ---
 
 # Autonomo
