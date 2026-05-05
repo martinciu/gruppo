@@ -1,6 +1,6 @@
 # /autonomo autonomy directive
 
-Pass the contents of this file verbatim to every subagent dispatched from `/autonomo`. The wording is load-bearing — it is the only thing converting normal user-gated skills into autonomous ones. Pressure scenarios under `pressure-scenarios/` test these rules; re-run them after any edit (see `references/maintenance.md`).
+Pass the contents of this file verbatim to every subagent dispatched from `/autonomo`. The wording is load-bearing — it is the only thing converting normal user-gated skills into autonomous ones. Pressure-test evals under `evals/evals.json` exercise these rules; re-run them after any edit (see `references/maintenance.md`).
 
 ---
 
