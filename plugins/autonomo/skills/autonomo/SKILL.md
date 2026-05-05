@@ -5,7 +5,10 @@ description: Use when the user types `/autonomo <prompt>` to autonomously turn a
 
 # Autonomo
 
-`/autonomo <prompt>` takes a freeform task description and runs the full `superpowers` pipeline — brainstorm a spec, write a plan, execute the plan, open a PR — without prompting the user. The user is not watching: subagents make best-effort decisions on small calls and bail with `BLOCKED:` only on high-stakes ambiguity. On success it prints a PR URL; on bail it leaves the branch and a one-page report at `tmp/autonomo/<slug>-<timestamp>.md`.
+`/autonomo <prompt>` takes a freeform task description and runs the full `superpowers` pipeline — brainstorm a spec, write a plan, execute the plan, open a PR — without prompting the user. The user is not watching: subagents make best-effort decisions on small calls and bail with `BLOCKED:` only on high-stakes ambiguity. On success it prints a PR URL; on bail it leaves the branch and a one-page report at `.autonomo/<slug>-<timestamp>.md`.
+
+**Runtime artifacts:** Logs and bail reports go in `.autonomo/<slug>-<RUN_TIMESTAMP>.{log,md}`. Add `.autonomo/` to your repo's `.gitignore` — these files are per-run and never committed.
+- (User preferences for artifact location override this default.)
 
 ## When to use
 
@@ -20,10 +23,10 @@ Do NOT use it for:
 
 ## Run log
 
-Every `/autonomo` run writes a structured log to `tmp/autonomo/<slug>-<RUN_TIMESTAMP>.log`. The log opens at the start of the run (not only on bail) and grows monotonically. It serves three audiences with one artifact:
+Every `/autonomo` run writes a structured log to `.autonomo/<slug>-<RUN_TIMESTAMP>.log`. The log opens at the start of the run (not only on bail) and grows monotonically. It serves three audiences with one artifact:
 
 - **Live main session** — both the controller and each subagent print pretty lines to stdout. Controller lines (`→ Phase K/3 …`) appear in the top-level transcript; subagent lines (`→ stage <name>`, `· stage <name> · K/N`, …) appear inside the nested Agent transcript view while a phase is running. Together they give the watching user granular per-stage progress without needing a tail.
-- **tmux tailer** — `tail -f tmp/autonomo/<slug>-<RUN_TIMESTAMP>.log` from another pane shows structured events as they happen. Useful when the user is not watching the Claude Code session live.
+- **tmux tailer** — `tail -f .autonomo/<slug>-<RUN_TIMESTAMP>.log` from another pane shows structured events as they happen. Useful when the user is not watching the Claude Code session live.
 - **Headless / post-mortem** — the structured format is grep-friendly for after-the-fact inspection. The on-bail report (see "Failure handling") becomes a derived summary; the log is the canonical artifact.
 
 **Controller stdout format (pretty, top-level transcript):**
@@ -160,8 +163,9 @@ Store the resulting branch name as `BRANCH_NAME` — the PR opener step uses it.
 **Open the run log.** Once `SLUG` and `RUN_TIMESTAMP` exist and the branch is created, open the log file. Subsequent emissions (phase markers, artifact echoes, errors) write to both stdout and this file:
 
 ```bash
-mkdir -p tmp/autonomo
-AUTONOMO_LOG="tmp/autonomo/${SLUG}-${RUN_TIMESTAMP}.log"
+AUTONOMO_LOG_DIR=".autonomo"
+mkdir -p "$AUTONOMO_LOG_DIR"
+AUTONOMO_LOG="$AUTONOMO_LOG_DIR/${SLUG}-${RUN_TIMESTAMP}.log"
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 echo "${TS} level=info phase=preflight event=run_start branch=${BRANCH_NAME}" >> "${AUTONOMO_LOG}"
 echo "→ /autonomo · run started"
@@ -257,7 +261,7 @@ If the push or `gh pr create` fails, fall through to the report writer with phas
 
 **On bail** (any phase returned `BLOCKED:` or errored):
 
-Write `tmp/autonomo/<slug>-<RUN_TIMESTAMP>.md`. Create the directory if needed. Use the report format under "Failure handling". Do not push, do not open a PR. Print the report path to the user. Leave the branch / worktree in place.
+Write `.autonomo/<slug>-<RUN_TIMESTAMP>.md`. Create the directory if needed. Use the report format under "Failure handling". Do not push, do not open a PR. Print the report path to the user. Leave the branch / worktree in place.
 
 ## The autonomy directive
 
@@ -334,7 +338,7 @@ Notes:
 
 `BLOCKED:` is the controlled-failure marker. Returns starting with that prefix are expected; anything else is uncontrolled and flagged in the report.
 
-**Report format** (`tmp/autonomo/<slug>-<RUN_TIMESTAMP>.md`):
+**Report format** (`.autonomo/<slug>-<RUN_TIMESTAMP>.md`):
 
 ```
 # Autonomo run blocked
@@ -342,7 +346,7 @@ Notes:
 - Phase: <brainstorm | plan | execute | pr>
 - Task: <prompt verbatim>
 - Branch / worktree: <branch name or worktree path>
-- Log: `tmp/autonomo/<slug>-<RUN_TIMESTAMP>.log` (full structured event history)
+- Log: `.autonomo/<slug>-<RUN_TIMESTAMP>.log` (full structured event history)
 - Started: <iso8601>
 - Stopped: <iso8601>
 

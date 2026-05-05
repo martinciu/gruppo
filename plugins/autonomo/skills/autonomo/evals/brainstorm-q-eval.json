@@ -65,8 +65,8 @@
       "prompt": "Add a 'last 3 runs' summary block to the `→ /autonomo · run started` header that shows timestamps and outcomes (success / blocked / errored) of the previous three /autonomo runs on this branch. The skill is at plugins/autonomo/skills/autonomo/SKILL.md.",
       "expected_questions": [
         {
-          "q": "Where does the data come from — git log, existing tmp/autonomo/*.log files, or a new state file?",
-          "a": "Parse from existing tmp/autonomo/*.log files matching the current branch — no new state file."
+          "q": "Where does the data come from — git log, existing .autonomo/*.log files, or a new state file?",
+          "a": "Parse from existing .autonomo/*.log files matching the current branch — no new state file."
         },
         {
           "q": "How is each run's outcome derived from its .log?",
