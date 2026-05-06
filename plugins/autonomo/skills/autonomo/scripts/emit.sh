@@ -14,6 +14,7 @@
 #   emit.sh commit          <sha> <subject>
 #   emit.sh progress        <phase> <message>
 #   emit.sh run-start       <branch>
+#   emit.sh dry-run-complete <branch> <commits>
 #
 # Required env: AUTONOMO_LOG — absolute path to the run log file (already opened by preflight).
 # Optional env: AUTONOMO_STDOUT_LOG — absolute path; when set, mirrors the pretty stdout line
@@ -139,6 +140,12 @@ case "$cmd" in
     branch="$1"
     dual "→ /autonomo · run started · branch=${branch}" \
          "$(ts) level=info phase=preflight event=run_start branch=${branch}"
+    ;;
+
+  dry-run-complete)
+    branch="$1"; commits="$2"
+    dual "✓ /autonomo · dry-run complete · branch=${branch} · commits=${commits} · push and PR skipped" \
+         "$(ts) level=info phase=pr event=dry_run_complete branch=${branch} commits=${commits}"
     ;;
 
   ""|-h|--help|help)

@@ -20,6 +20,8 @@ Do NOT use it for:
 - Anything where you need to be in the loop — `/autonomo` is unattended by design. If you want to review the spec or plan before implementation, run the underlying `superpowers` skills directly.
 - Starting from a dirty tree, or from a feature branch that already has commits ahead of `main`/`master`. The skill refuses both; clean up first or switch to `main`/`master` / a freshly cut branch.
 
+`/autonomo --dry-run "<task>"` runs the full pipeline (brainstorm → plan → execute) and produces the spec, plan, and commits locally, but skips `git push` and `gh pr create`. Useful for previewing what `/autonomo` would do on a borderline task, exercising the controller end-to-end while iterating on the skill, or running pressure tests against the real wiring (rather than per-phase isolation).
+
 ## Run log
 
 Every run writes a structured log to `.autonomo/<slug>-<RUN_TIMESTAMP>.log` and a parallel pretty stream to stdout. Both surfaces are written by `scripts/emit.sh`; the controller and every subagent emit through it. The full subcommand list, stdout shapes, structured-line format, and canonical stage vocabulary live in `references/run-log.md`.
@@ -72,14 +74,15 @@ TOTAL_DURATION_MS=0
 
 ### 2. Parse input
 
-The `<input>` argument from `/autonomo <input>` is a freeform task description. The only check is non-emptiness:
+The `<input>` argument from `/autonomo <input>` is a freeform task description. One optional flag is recognized; everything else is the task verbatim.
 
 | Shape | Match | Resolution |
 |-------|-------|------------|
-| Prompt | non-empty input | `{title: <input>, body: ""}` — pass through verbatim |
-| Empty | `<input>` is empty / whitespace only | exit `BLOCKED: usage: /autonomo "<task description>"` |
+| `--dry-run` flag | leading `--dry-run` token (anywhere before the first non-flag word) | set `DRY_RUN=1`; remove the token from the input; continue parsing |
+| Prompt | non-empty residual input | `{title: <input>, body: ""}` — pass through verbatim |
+| Empty | residual input is empty / whitespace only | exit `BLOCKED: usage: /autonomo [--dry-run] "<task description>"` |
 
-Store the resolved task object as `TASK` for the rest of the run.
+Store the resolved task object as `TASK` and the flag state as `DRY_RUN` (defaulting to `0` when unset). `DRY_RUN=1` only changes §5 — the brainstorm / plan / execute pipeline runs unchanged so the spec, plan, and commits are produced as usual.
 
 ### 3. Pick workspace
 
@@ -226,21 +229,40 @@ If any return starts with `BLOCKED:` or the subagent errors out, jump to the rep
 1. Determine the remote branch name:
    - If `BRANCH_NAME` starts with `worktree-`, strip that prefix. (The `worktrunk` / `EnterWorktree` workflow adds it locally; remote should see the clean name.)
    - Otherwise push the local name as-is.
-2. `git push -u origin <remote-branch-name>`.
-3. Compose the PR body from the template in `references/pr-body.md` (template + composition rules; the conditional `## Spec` / `## Plan` rendering is the load-bearing part). Then run `gh pr create --title "<task prompt, truncated to ~70 chars at a word boundary>" --body "<composed-body>"` — single command, base branch is the repo default (usually `main`).
-4. Print the PR URL to the user, then echo the log path so post-mortem has it handy:
+2. Compose the PR title (`"<task prompt, truncated to ~70 chars at a word boundary>"`) and body from the template in `references/pr-body.md` (template + composition rules; the conditional `## Spec` / `## Plan` rendering is the load-bearing part). Composition is the same in normal and dry-run modes.
+3. Branch on `DRY_RUN`:
+   - **`DRY_RUN=0` (default).** Run `git push -u origin <remote-branch-name>`, then `gh pr create --title "<title>" --body "<body>"` — single command, base branch is the repo default (usually `main`). Print the PR URL, then echo the log path so post-mortem has it handy:
 
-   ```bash
-   echo "  log: ${AUTONOMO_LOG}"
-   ```
+     ```bash
+     echo "  log: ${AUTONOMO_LOG}"
+     ```
 
-   Done.
+   - **`DRY_RUN=1`.** Skip the push and the `gh pr create` call. Print a summary block to stdout (branch, commit count, head SHA, log path, would-be PR title, would-be PR body), emit `dry-run-complete`, then exit 0:
 
-If the push or `gh pr create` fails, fall through to the report writer with phase = `pr` — the branch and commits exist locally; the human can retry the PR open manually.
+     ```bash
+     COMMITS=$(git rev-list --count "${BRANCH_BASE}..HEAD")
+     HEAD_SHA=$(git rev-parse HEAD)
+     cat <<EOF
+
+     dry-run summary
+       branch:        ${BRANCH_NAME}  (would push as ${REMOTE_BRANCH_NAME})
+       commits:       ${COMMITS}
+       head:          ${HEAD_SHA:0:12}
+       log:           ${AUTONOMO_LOG}
+       would-be title: ${PR_TITLE}
+     would-be body:
+     ${PR_BODY}
+     EOF
+     bash "${AUTONOMO_EMIT}" dry-run-complete "${BRANCH_NAME}" "${COMMITS}"
+     ```
+
+     Branch + commits stay on disk. The operator can manually `git push` + `gh pr create` later if the dry-run output looks right.
+
+If the push or `gh pr create` fails (only relevant on `DRY_RUN=0`), fall through to the report writer with phase = `pr` — the branch and commits exist locally; the human can retry the PR open manually.
 
 **On bail** (any phase returned `BLOCKED:` or errored):
 
-Write `.autonomo/<slug>-<RUN_TIMESTAMP>.md` using the template in `references/failure-report.md`. Create the directory if needed. Do not push, do not open a PR. Print the report path to the user. Leave the branch / worktree in place. No retry. No rollback. Bail on first failure.
+Write `.autonomo/<slug>-<RUN_TIMESTAMP>.md` using the template in `references/failure-report.md`. Create the directory if needed. Do not push, do not open a PR. Print the report path to the user. Leave the branch / worktree in place. No retry. No rollback. Bail on first failure. Bail behavior is identical in dry-run mode — the report is the same artifact regardless of `DRY_RUN`.
 
 ## Failure handling
 
@@ -280,6 +302,7 @@ Operator-side footguns. (Subagent-side mistakes — escalation, recursion, scope
 | Running `/autonomo` from a feature branch that already has commits ahead of `main`/`master` | Skill exits cleanly with `BLOCKED: feature branch already has commits` before any subagent runs | Switch to `main`/`master` or cut a fresh branch (`git switch main` then `git checkout -b <name>`) and re-run. The decision table in §3 is what enforces this. |
 | Editing `references/autonomy-directive.md` without re-running evals | Wording regresses subagent behavior in non-obvious ways (rules look fine in prose but a pressure scenario flips RED) | Re-run `evals/evals.json` after every directive edit. Each eval has a `rerun_trigger` field naming what edits warrant a re-run. See `references/maintenance.md`. |
 | Confusing `AUTONOMO_LOG` (the file) with `AUTONOMO_RUNNING` (the recursion-guard env var) | A subagent that sets `AUTONOMO_LOG=1` instead of using the inherited path; or a controller that re-exports `AUTONOMO_RUNNING=1` mid-run and clobbers nested checks | They are unrelated. `AUTONOMO_LOG` is an absolute path to a file; `AUTONOMO_RUNNING` is a 0/1 flag set once at preflight. The recursion guard is `AUTONOMO_RUNNING`; the log path is `AUTONOMO_LOG`. |
+| Leaving `--dry-run` in a scripted invocation | The pipeline runs to completion but no PR is opened — the operator wonders why nothing landed | Watch for the `✓ /autonomo · dry-run complete · …` stdout line and the `event=dry_run_complete` log entry; both are emitted exactly when the push and PR are skipped. Strip `--dry-run` from the invocation when scripting for real runs. |
 
 ## Bundled resources
 

@@ -23,6 +23,7 @@ All emission goes through `scripts/emit.sh` — the script writes both surfaces 
 | `commit <sha> <subject>` | `  · commit <sha[0:7]> · subject` | `<ts> level=info phase=execute event=commit sha=<sha> subject="…"` |
 | `progress <p> <message>` | `· message` | `<ts> level=info phase=p event=progress message="…"` |
 | `run-start <branch>` | `→ /autonomo · run started · branch=…` | `<ts> level=info phase=preflight event=run_start branch=…` |
+| `dry-run-complete <branch> <commits>` | `✓ /autonomo · dry-run complete · branch=… · commits=N · push and PR skipped` | `<ts> level=info phase=pr event=dry_run_complete branch=… commits=N` |
 
 `<ts>` is ISO-8601 UTC. Each structured line is exactly one log line — embedded newlines and double quotes in user text are sanitized by the script.
 
