@@ -1,6 +1,6 @@
 {
   "name": "autonomo",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "description": "Autonomously turn a freeform task description into a PR by running the superpowers pipeline (brainstorm → plan → execute → PR) without user interaction.",
   "author": {
     "name": "martinciu",

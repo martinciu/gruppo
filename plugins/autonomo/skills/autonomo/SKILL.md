@@ -61,6 +61,15 @@ AUTONOMO_EMIT="${SKILL_DIR}/scripts/emit.sh"
 
 `AUTONOMO_EMIT` and `AUTONOMO_LOG` (set in step 3) are passed in every subagent dispatch prompt; subagents source the directive from `${SKILL_DIR}/references/autonomy-directive.md`.
 
+**Budget ceilings.** Read the per-run ceilings from the environment, with safe defaults, and initialize accumulators. Both ceilings are checked between phases (§4); see `## Limits` for the full contract.
+
+```bash
+export AUTONOMO_MAX_TOKENS="${AUTONOMO_MAX_TOKENS:-80000}"
+export AUTONOMO_MAX_DURATION_S="${AUTONOMO_MAX_DURATION_S:-900}"
+TOTAL_TOKENS=0
+TOTAL_DURATION_MS=0
+```
+
 ### 2. Parse input
 
 The `<input>` argument from `/autonomo <input>` is a freeform task description. The only check is non-emptiness:
@@ -136,6 +145,27 @@ so the subagent can `export` them at the top of every bash session it spawns.
 
 The wrapper around each Agent call is the same three lines — phase-start before dispatch, phase-end on success (with duration and key artifacts), or phase-bail if the return starts with `BLOCKED:`. The script writes both surfaces; do not echo by hand.
 
+**Per-phase budget accounting.** When the Agent tool call returns, the controller (Claude) sees a notification carrying `total_tokens` and `duration_ms` for that subagent invocation. Bash cannot read those values; the controller must read them off the notification and substitute them into the post-`phase-end` block as `PHASE_TOKENS` and `PHASE_DURATION_MS`. After every successful `phase-end` (including phase 3), accumulate and check both ceilings:
+
+```bash
+TOTAL_TOKENS=$(( TOTAL_TOKENS + PHASE_TOKENS ))
+TOTAL_DURATION_MS=$(( TOTAL_DURATION_MS + PHASE_DURATION_MS ))
+TOTAL_DURATION_S=$(( TOTAL_DURATION_MS / 1000 ))
+if [ "${TOTAL_TOKENS}" -gt "${AUTONOMO_MAX_TOKENS}" ]; then
+  bash "${AUTONOMO_EMIT}" budget-exceeded "${PHASE}" "${PHASE_INDEX}" 3 tokens \
+       "${TOTAL_TOKENS}" "${AUTONOMO_MAX_TOKENS}" \
+       "${TOTAL_DURATION_S}" "${AUTONOMO_MAX_DURATION_S}"
+  # jump to §5 bail path; reason="Budget exceeded: tokens; ${TOTAL_TOKENS}/${AUTONOMO_MAX_TOKENS}"
+elif [ "${TOTAL_DURATION_S}" -gt "${AUTONOMO_MAX_DURATION_S}" ]; then
+  bash "${AUTONOMO_EMIT}" budget-exceeded "${PHASE}" "${PHASE_INDEX}" 3 duration \
+       "${TOTAL_TOKENS}" "${AUTONOMO_MAX_TOKENS}" \
+       "${TOTAL_DURATION_S}" "${AUTONOMO_MAX_DURATION_S}"
+  # jump to §5 bail path; reason="Budget exceeded: duration; ${TOTAL_DURATION_S}s/${AUTONOMO_MAX_DURATION_S}s"
+fi
+```
+
+A breach after phase 3 still bails — the work exists locally on the branch, but `/autonomo` does not auto-push or open a PR; the suggested next step in the report points at a manual `gh pr create`. Mid-phase runaway is not caught; that cost is sunk by the time the phase returns.
+
 #### 4.1. Brainstorm
 
 ```bash
@@ -151,8 +181,10 @@ On a non-`BLOCKED:` return, parse `SPEC_PATH` from the subagent's output. Derive
 DURATION=$(( $(date +%s) - PHASE_START ))
 ASSUMPTIONS_COUNT=$(grep -c 'phase=brainstorm event=assumption' "${AUTONOMO_LOG}" || true)
 bash "${AUTONOMO_EMIT}" phase-end brainstorm 1 3 ${DURATION} \
-     spec=${SPEC_PATH} assumptions=${ASSUMPTIONS_COUNT}
+     spec=${SPEC_PATH} assumptions=${ASSUMPTIONS_COUNT} tokens=${PHASE_TOKENS}
 ```
+
+Then run the per-phase budget accounting block above (set `PHASE=brainstorm` and `PHASE_INDEX=1`). If either ceiling is breached, jump to §5 with the bail path; do not proceed to §4.2.
 
 If the return starts with `BLOCKED:`:
 
@@ -220,8 +252,22 @@ Write `.autonomo/<slug>-<RUN_TIMESTAMP>.md` using the template in `references/fa
 | Plan | same | same |
 | Execute | same; OR completes but tests / lint fail | same — no auto-retry, no auto-fix |
 | PR open | push rejected, `gh pr create` fails | branch + commits exist locally; report points user at manual `gh pr create` |
+| Budget | accumulated tokens or duration exceed `AUTONOMO_MAX_TOKENS` / `AUTONOMO_MAX_DURATION_S` after a phase | emit `event=budget_exceeded`, write report (phase = the phase that just ran, reason includes total/max), exit. Branch + any commits stay; manual `gh pr create` if work is salvageable. |
 
 `BLOCKED:` is the controlled-failure marker. Returns starting with that prefix are expected; anything else is uncontrolled and flagged in the report. Both surface the same way — see `references/failure-report.md` for the report template.
+
+## Limits
+
+`/autonomo` is unattended by design — a runaway subagent has no human stop button. Two ceilings cap the worst case:
+
+| Variable | Default | What it bounds |
+|----------|---------|----------------|
+| `AUTONOMO_MAX_TOKENS` | `80000` | Sum of `total_tokens` across all phase subagents in the run. |
+| `AUTONOMO_MAX_DURATION_S` | `900` (15 min) | Sum of `duration_ms` across all phase subagents, in seconds. |
+
+Both are read once at preflight (§1) and checked between phases (§4) — never mid-phase, since interrupting a running subagent is messy and the cost is already incurred. A breach emits `event=budget_exceeded reason=<tokens|duration>` and routes to the bail path (no PR, branch and any commits stay on disk). Defaults are loose enough that routine runs (~30–50k tokens, sub-200s per phase observed in evals) never trip them; only a runaway run does.
+
+Override per-run by setting either variable before invoking the skill, e.g. `AUTONOMO_MAX_TOKENS=20000 /autonomo "<task>"` for a tight cap on a debug run. Tokens are the budget primitive (observable on every Agent return) rather than dollars — different models cost different amounts per token, so dollar conversion belongs in a future enhancement with a price config, not here.
 
 ## Common Mistakes
 

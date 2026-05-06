@@ -6,6 +6,7 @@
 #   emit.sh phase-start     <phase> <i> <n>
 #   emit.sh phase-end       <phase> <i> <n> <duration_s> [k=v ...]
 #   emit.sh phase-bail      <phase> <i> <n> <reason>
+#   emit.sh budget-exceeded <phase> <i> <n> <reason> <total_tokens> <max_tokens> <total_duration_s> <max_duration_s>
 #   emit.sh stage-start     <phase> <stage>
 #   emit.sh stage-progress  <phase> <stage> <done> [<total>]
 #   emit.sh stage-end       <phase> <stage> [<duration_s>]
@@ -74,6 +75,14 @@ case "$cmd" in
     reason_pretty="$(oneline "$4")"; reason_log="$(escape "$4")"
     dual "✗ Phase ${i}/${n} · ${phase} · BLOCKED · ${reason_pretty}" \
          "$(ts) level=warn phase=${phase} event=blocked reason=\"${reason_log}\""
+    ;;
+
+  budget-exceeded)
+    phase="$1"; i="$2"; n="$3"; reason="$4"
+    total_tokens="$5"; max_tokens="$6"
+    total_duration_s="$7"; max_duration_s="$8"
+    dual "✗ Phase ${i}/${n} · ${phase} · BUDGET · tokens=${total_tokens}/${max_tokens} duration=${total_duration_s}s/${max_duration_s}s" \
+         "$(ts) level=error phase=${phase} event=budget_exceeded reason=${reason} total_tokens=${total_tokens} total_duration_s=${total_duration_s}"
     ;;
 
   stage-start)

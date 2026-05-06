@@ -17,7 +17,7 @@ When any phase returns `BLOCKED:` or errors, the controller writes a one-page re
 - Stopped: <iso8601>
 
 ## Reason
-<full subagent return value, or error trace>
+<full subagent return value, or error trace; for budget bails: `Budget exceeded: <tokens|duration>; <total>/<max>`>
 
 ## Artifacts on disk
 - spec: <path or "not produced">
@@ -34,3 +34,4 @@ When any phase returns `BLOCKED:` or errors, the controller writes a one-page re
 - No retry. No rollback. Bail on first failure.
 - The report is a one-page summary; the log (`.autonomo/<slug>-<RUN_TIMESTAMP>.log`) is the full event history. Both stay on disk; the user inspects either, fixes input or environment, and re-runs.
 - If `gh pr create` is the failing step, the branch and commits already exist locally — the report's "Suggested next step" should point the user at a manual `gh pr create` rather than asking them to start over.
+- For a budget bail (`event=budget_exceeded`), `Phase` is the phase that just ran (not a separate `budget` phase) and `Reason` carries the breach in the `Budget exceeded: <tokens|duration>; <total>/<max>` form. If the bail came after `execute`, the work is on the local branch — the suggested next step should point at a manual `gh pr create` (same as the `pr` failure path) rather than re-running the whole pipeline.
