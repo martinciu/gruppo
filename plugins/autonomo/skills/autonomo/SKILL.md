@@ -196,7 +196,7 @@ If any return starts with `BLOCKED:` or the subagent errors out, jump to the rep
    - If `BRANCH_NAME` starts with `worktree-`, strip that prefix. (The `worktrunk` / `EnterWorktree` workflow adds it locally; remote should see the clean name.)
    - Otherwise push the local name as-is.
 2. `git push -u origin <remote-branch-name>`.
-3. Compose the PR body from the template under "## PR body template". For each of `## Spec` and `## Plan`, include the section (heading + link) only if `git ls-files --error-unmatch "<path>"` returns 0; otherwise drop the entire section — no placeholder stub, no path-only line. Then run `gh pr create --title "<task prompt, truncated to ~70 chars at a word boundary>" --body "<composed-body>"` — single command, base branch is the repo default (usually `main`).
+3. Compose the PR body from the template in `references/pr-body.md` (template + composition rules; the conditional `## Spec` / `## Plan` rendering is the load-bearing part). Then run `gh pr create --title "<task prompt, truncated to ~70 chars at a word boundary>" --body "<composed-body>"` — single command, base branch is the repo default (usually `main`).
 4. Print the PR URL to the user, then echo the log path so post-mortem has it handy:
 
    ```bash
@@ -209,34 +209,7 @@ If the push or `gh pr create` fails, fall through to the report writer with phas
 
 **On bail** (any phase returned `BLOCKED:` or errored):
 
-Write `.autonomo/<slug>-<RUN_TIMESTAMP>.md`. Create the directory if needed. Use the report format under "## Failure handling". Do not push, do not open a PR. Print the report path to the user. Leave the branch / worktree in place.
-
-## PR body template
-
-```
-## Summary
-<1-3 bullets, lifted from the execute-plan subagent's summary>
-
-## Spec
-[<basename of SPEC_PATH>](<SPEC_PATH>)
-
-## Plan
-[<basename of PLAN_PATH>](<PLAN_PATH>)
-
-## Assumptions
-<concatenation of every subagent's `## Assumptions` section, deduplicated>
-
-## Test plan
-<from executing-plans subagent's output>
-
-🤖 Opened autonomously by [/autonomo](https://github.com/martinciu/gruppo/blob/main/plugins/autonomo/skills/autonomo/SKILL.md) — no human in the loop.
-```
-
-Notes:
-
-- The `## Spec` and `## Plan` sections render **only when their file is tracked in git** (`git ls-files --error-unmatch <path>` returns 0). Otherwise both the heading and body are dropped — no placeholder, no path-only line.
-- Link path is the relative `SPEC_PATH` / `PLAN_PATH`; GitHub renders relative links in PR descriptions against the head branch.
-- The footer link points at the published autonomo SKILL.md in the gruppo repo. It is hardcoded — autonomo does not derive its own source URL.
+Write `.autonomo/<slug>-<RUN_TIMESTAMP>.md` using the template in `references/failure-report.md`. Create the directory if needed. Do not push, do not open a PR. Print the report path to the user. Leave the branch / worktree in place. No retry. No rollback. Bail on first failure.
 
 ## Failure handling
 
@@ -249,39 +222,27 @@ Notes:
 | Execute | same; OR completes but tests / lint fail | same — no auto-retry, no auto-fix |
 | PR open | push rejected, `gh pr create` fails | branch + commits exist locally; report points user at manual `gh pr create` |
 
-`BLOCKED:` is the controlled-failure marker. Returns starting with that prefix are expected; anything else is uncontrolled and flagged in the report.
+`BLOCKED:` is the controlled-failure marker. Returns starting with that prefix are expected; anything else is uncontrolled and flagged in the report. Both surface the same way — see `references/failure-report.md` for the report template.
 
-**Report format** (`.autonomo/<slug>-<RUN_TIMESTAMP>.md`):
+## Common Mistakes
 
-```
-# Autonomo run blocked
+Operator-side footguns. (Subagent-side mistakes — escalation, recursion, scope creep — are covered by the directive and pressure-tested by `evals/evals.json`; this list is what trips up the *controller* and the *human* around the run.)
 
-- Phase: <brainstorm | plan | execute | pr>
-- Task: <prompt verbatim>
-- Branch / worktree: <branch name or worktree path>
-- Log: `.autonomo/<slug>-<RUN_TIMESTAMP>.log` (full structured event history)
-- Started: <iso8601>
-- Stopped: <iso8601>
-
-## Reason
-<full subagent return value, or error trace>
-
-## Artifacts on disk
-- spec: <path or "not produced">
-- plan: <path or "not produced">
-- commits: <git log --oneline since branch base, or "none">
-
-## Suggested next step
-<best-guess hint, e.g. "Run /autonomo again with a more specific prompt" or "Resume with /superpowers:executing-plans against tmp/plans/<plan>.md">
-```
-
-No retry. No rollback. Bail on first failure. Leave artifacts in place — the report is a one-page summary, the log is the full event history. The user inspects either, fixes input or environment, and re-runs.
+| Mistake | Symptom | Fix |
+|---------|---------|-----|
+| Forgetting to inline `AUTONOMO_LOG=` / `AUTONOMO_EMIT=` in the dispatch prompt body | Subagent's `bash` sessions can't find `${AUTONOMO_LOG}`; `emit.sh` exits 2 with `AUTONOMO_LOG not set`; tmux tailer sees silence during multi-minute phases | Substitute both env vars literally into the prompt body — Agent subagents do **not** inherit the controller's environment. See §4 lines around the "Every dispatch prompt body must include" block. |
+| Forgetting `.autonomo/` in repo `.gitignore` | Run logs and bail reports show up in `git status` and risk getting committed | Add `.autonomo/` to the repo's `.gitignore` once. The skill itself doesn't write the entry — that's the operator's setup step (called out in the SKILL.md "Runtime artifacts" callout). |
+| Running `/autonomo` from a feature branch that already has commits ahead of `main`/`master` | Skill exits cleanly with `BLOCKED: feature branch already has commits` before any subagent runs | Switch to `main`/`master` or cut a fresh branch (`git switch main` then `git checkout -b <name>`) and re-run. The decision table in §3 is what enforces this. |
+| Editing `references/autonomy-directive.md` without re-running evals | Wording regresses subagent behavior in non-obvious ways (rules look fine in prose but a pressure scenario flips RED) | Re-run `evals/evals.json` after every directive edit. Each eval has a `rerun_trigger` field naming what edits warrant a re-run. See `references/maintenance.md`. |
+| Confusing `AUTONOMO_LOG` (the file) with `AUTONOMO_RUNNING` (the recursion-guard env var) | A subagent that sets `AUTONOMO_LOG=1` instead of using the inherited path; or a controller that re-exports `AUTONOMO_RUNNING=1` mid-run and clobbers nested checks | They are unrelated. `AUTONOMO_LOG` is an absolute path to a file; `AUTONOMO_RUNNING` is a 0/1 flag set once at preflight. The recursion guard is `AUTONOMO_RUNNING`; the log path is `AUTONOMO_LOG`. |
 
 ## Bundled resources
 
 - `references/autonomy-directive.md` — verbatim block passed to every dispatched subagent. The wording is load-bearing; pressure-test evals under `evals/evals.json` exercise the rules.
 - `references/run-log.md` — full subcommand reference and structured-line shapes for `scripts/emit.sh`, plus the canonical stage vocabulary.
+- `references/pr-body.md` — PR body template and composition rules (referenced by §5 success path).
+- `references/failure-report.md` — bail-report template (referenced by §5 bail path and `## Failure handling`).
 - `references/maintenance.md` — how to re-run the pressure-test evals after editing the directive, and when to bump `plugin.json` `version`.
 - `scripts/emit.sh` — the dual-write helper. `bash scripts/emit.sh --help` prints the subcommand list.
 - `scripts/slugify.sh` — slug derivation used by §3 (kebab-case, ASCII, 40-char word-boundary truncation, `auto-<ts>` fallback). `scripts/tests/slugify.test.sh` is the canonical test set.
-- `evals/evals.json` — pressure-test evals for the autonomy directive (one eval per rule, with prompts, fixture paths, machine-checkable expectations, and RED/GREEN baselines). `evals/fixtures/<eval-name>/` holds the canonical input files the runner copies into a per-run workspace. `evals/brainstorm-q-eval.json` separately grades clarifying-question quality (Q:/A: surfacing under rule 1).
+- `evals/evals.json` — pressure-test evals for the autonomy directive (one eval per rule, with prompts, fixture paths, machine-checkable expectations, and RED/GREEN baselines). `evals/fixtures/<eval-name>/` holds the canonical input files the runner copies into a per-run workspace. `evals/brainstorm-q-eval.json` separately grades clarifying-question quality (Q:/A: surfacing under rule 1). `evals/grade-progress-emission.py` is the deterministic grader for eval id=6.
