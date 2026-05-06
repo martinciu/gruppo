@@ -15,6 +15,7 @@ All emission goes through `scripts/emit.sh` — the script writes both surfaces 
 | `phase-start <p> <i> <n>` | `→ Phase i/n · p · dispatching` | `<ts> level=info phase=p event=dispatch_start` |
 | `phase-end <p> <i> <n> <d> [k=v ...]` | `✓ Phase i/n · p · ds · k=v · …` | `<ts> level=info phase=p event=dispatch_end duration_s=d k=v …` |
 | `phase-bail <p> <i> <n> <reason>` | `✗ Phase i/n · p · BLOCKED · <reason>` | `<ts> level=warn phase=p event=blocked reason="<reason>"` |
+| `budget-exceeded <p> <i> <n> <reason> <tt> <mt> <td> <md>` | `✗ Phase i/n · p · BUDGET · tokens=tt/mt duration=tds/mds` | `<ts> level=error phase=p event=budget_exceeded reason=<tokens\|duration> total_tokens=tt total_duration_s=td` |
 | `stage-start <p> <s>` | `→ stage s` | `<ts> level=info phase=p event=stage_start stage=s` |
 | `stage-progress <p> <s> <done> [<total>]` | `· stage s · done/total` (or `· stage s · done`) | `<ts> level=info phase=p event=stage_progress stage=s done=… [total=…]` |
 | `stage-end <p> <s> [<duration_s>]` | `✓ stage s` (`· ds` when given) | `<ts> level=info phase=p event=stage_end stage=s [duration_s=…]` |
