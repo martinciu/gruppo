@@ -279,8 +279,9 @@ No retry. No rollback. Bail on first failure. Leave artifacts in place — the r
 
 ## Bundled resources
 
-- `references/autonomy-directive.md` — verbatim block passed to every dispatched subagent. The wording is load-bearing; pressure scenarios under `pressure-scenarios/` test the rules.
+- `references/autonomy-directive.md` — verbatim block passed to every dispatched subagent. The wording is load-bearing; pressure-test evals under `evals/evals.json` exercise the rules.
 - `references/run-log.md` — full subcommand reference and structured-line shapes for `scripts/emit.sh`, plus the canonical stage vocabulary.
-- `references/maintenance.md` — how to re-run pressure scenarios after editing the directive, and when to bump `plugin.json` `version`.
+- `references/maintenance.md` — how to re-run the pressure-test evals after editing the directive, and when to bump `plugin.json` `version`.
 - `scripts/emit.sh` — the dual-write helper. `bash scripts/emit.sh --help` prints the subcommand list.
-- `pressure-scenarios/` — one scenario per directive rule, each with RED (no-directive baseline) and GREEN (directive-in-place) expectations.
+- `scripts/slugify.sh` — slug derivation used by §3 (kebab-case, ASCII, 40-char word-boundary truncation, `auto-<ts>` fallback). `scripts/tests/slugify.test.sh` is the canonical test set.
+- `evals/evals.json` — pressure-test evals for the autonomy directive (one eval per rule, with prompts, fixture paths, machine-checkable expectations, and RED/GREEN baselines). `evals/fixtures/<eval-name>/` holds the canonical input files the runner copies into a per-run workspace. `evals/brainstorm-q-eval.json` separately grades clarifying-question quality (Q:/A: surfacing under rule 1).
