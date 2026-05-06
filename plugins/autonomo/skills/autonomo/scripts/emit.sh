@@ -15,6 +15,9 @@
 #   emit.sh run-start       <branch>
 #
 # Required env: AUTONOMO_LOG — absolute path to the run log file (already opened by preflight).
+# Optional env: AUTONOMO_STDOUT_LOG — absolute path; when set, mirrors the pretty stdout line
+# to that file. Used by eval harnesses that need a file-on-disk copy of the stdout surface
+# to grade against. Unset in normal /autonomo runs.
 
 set -euo pipefail
 
@@ -34,6 +37,9 @@ dual() {
   # Args: pretty_line  structured_line
   printf '%s\n' "$1"
   printf '%s\n' "$2" >> "${AUTONOMO_LOG}"
+  if [ -n "${AUTONOMO_STDOUT_LOG:-}" ]; then
+    printf '%s\n' "$1" >> "${AUTONOMO_STDOUT_LOG}"
+  fi
 }
 
 show_help() {
