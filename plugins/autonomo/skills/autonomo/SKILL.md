@@ -63,14 +63,14 @@ AUTONOMO_EMIT="${SKILL_DIR}/scripts/emit.sh"
 
 `AUTONOMO_EMIT` and `AUTONOMO_LOG` (set in step 3) are passed in every subagent dispatch prompt; subagents source the directive from `${SKILL_DIR}/references/autonomy-directive.md`.
 
-**Budget ceilings.** Read the per-run ceilings from the environment, with safe defaults, and initialize accumulators. Both ceilings are checked between phases (§4); see `## Limits` for the full contract.
+**Budget ceilings.** Read the per-run ceilings from the environment, with safe defaults. Both ceilings are checked between phases by `scripts/budget.sh` (§4); see `## Limits` for the full contract.
 
 ```bash
 export AUTONOMO_MAX_TOKENS="${AUTONOMO_MAX_TOKENS:-80000}"
 export AUTONOMO_MAX_DURATION_S="${AUTONOMO_MAX_DURATION_S:-900}"
-TOTAL_TOKENS=0
-TOTAL_DURATION_MS=0
 ```
+
+Accumulator state lives in `${AUTONOMO_LOG%.log}.budget` and is owned by `scripts/budget.sh`; the controller does not initialize it.
 
 ### 2. Parse input
 
@@ -86,40 +86,35 @@ Store the resolved task object as `TASK` and the flag state as `DRY_RUN` (defaul
 
 ### 3. Pick workspace
 
-Inspect git state, decide where the work goes. Refuse to start from a non-clean baseline.
-
-**Slug derivation.** Compute `<slug>` once, used for both the branch name and the report filename:
+Compute the slug, then call the workspace-picker. The script enforces the decision table; the prose below documents what it does so a reader (or auditor) doesn't have to read the script to understand the controller's git assumptions.
 
 ```bash
 SLUG=$(bash "${SKILL_DIR}/scripts/slugify.sh" "$INPUT")
 RUN_TIMESTAMP=$(date +%s)
+BRANCH_NAME=$(bash "${SKILL_DIR}/scripts/pick-workspace.sh" "${SLUG}") || exit 1
 ```
 
-The slug rules live in `scripts/slugify.sh`; `scripts/tests/slugify.test.sh` is the canonical test set — re-run after any edit.
+On a non-zero exit the script has already written `BLOCKED: <reason>` to stderr; propagate and stop. No bail report is written — no subagent has run yet, the branch was not created, and the §5 report writer is for phase failures only.
 
-**Decision table** (evaluated top-down — first matching row wins):
+The slug rules live in `scripts/slugify.sh` (`scripts/tests/slugify.test.sh`); the workspace decision lives in `scripts/pick-workspace.sh` (`scripts/tests/pick-workspace.test.sh`). Re-run the matching test set after any edit to either.
 
-| Current state | Action |
-|---------------|--------|
-| On `main` / `master`, working tree clean | `git checkout -b autonomo/<slug>` |
-| Inside a worktree, working tree clean | Reuse the current worktree: `git checkout -b autonomo/<slug>` in place. Do not spawn a sibling worktree. |
-| On a feature branch with no commits ahead of `main`/`master`, working tree clean | Reuse the current branch as-is. Do not create `autonomo/<slug>`; the existing branch name is what gets pushed. |
-| On a feature branch with commits ahead of `main`/`master`, working tree clean | exit `BLOCKED: feature branch already has commits; start from main or a fresh branch` |
-| Working tree dirty (any uncommitted changes) | exit `BLOCKED: working tree dirty; stash or commit first` |
+**Decision table** (enforced by `scripts/pick-workspace.sh`, top-down — first matching row wins):
 
-**Detecting "inside a worktree":** `git rev-parse --git-dir` ends in `/.git/worktrees/<name>` for linked worktrees; for the main repo it's `.git`. Use this to distinguish.
+| Current state | Action | Branch printed |
+|---------------|--------|----------------|
+| Working tree dirty (any uncommitted changes) | exit `BLOCKED: working tree dirty; stash or commit first` | — |
+| On the default branch (origin/HEAD), clean | `git checkout -b autonomo/<slug>` | `autonomo/<slug>` |
+| Inside a linked worktree, clean | `git checkout -b autonomo/<slug>` in place. Do not spawn a sibling worktree. | `autonomo/<slug>` |
+| On a feature branch with no commits ahead of the default, clean | reuse the current branch as-is | `<current branch>` |
+| On a feature branch with commits ahead of the default, clean | exit `BLOCKED: feature branch already has commits; start from main or a fresh branch` | — |
 
-**Detecting "no commits ahead of default":**
+**Detection details** (also enforced by the script):
 
-```bash
-DEFAULT=$(git symbolic-ref refs/remotes/origin/HEAD --short 2>/dev/null | sed 's|^origin/||')
-DEFAULT=${DEFAULT:-main}
-if [ -z "$(git log "origin/${DEFAULT}..HEAD" --oneline)" ]; then
-  # branch has no commits ahead of default — safe to reuse
-fi
-```
+- **Default branch** is whatever `git symbolic-ref refs/remotes/origin/HEAD` points at, with the `origin/` prefix stripped; falls back to `main` if origin/HEAD is unset.
+- **Linked worktree** is detected by `git rev-parse --git-dir` ending in `/.git/worktrees/<name>` (vs `.git` for the primary checkout).
+- **No commits ahead** means `git log origin/<default>..HEAD --oneline` is empty.
 
-Store the resulting branch name as `BRANCH_NAME`. The PR opener (§5) uses it.
+The script's stdout is the canonical `BRANCH_NAME` value used by the PR opener (§5).
 
 **Open the run log.** Once `SLUG`, `RUN_TIMESTAMP`, and `BRANCH_NAME` exist:
 
@@ -148,24 +143,20 @@ so the subagent can `export` them at the top of every bash session it spawns.
 
 The wrapper around each Agent call is the same three lines — phase-start before dispatch, phase-end on success (with duration and key artifacts), or phase-bail if the return starts with `BLOCKED:`. The script writes both surfaces; do not echo by hand.
 
-**Per-phase budget accounting.** When the Agent tool call returns, the controller (Claude) sees a notification carrying `total_tokens` and `duration_ms` for that subagent invocation. Bash cannot read those values; the controller must read them off the notification and substitute them into the post-`phase-end` block as `PHASE_TOKENS` and `PHASE_DURATION_MS`. After every successful `phase-end` (including phase 3), accumulate and check both ceilings:
+**Per-phase budget accounting.** When the Agent tool call returns, the controller (Claude) sees a notification carrying `total_tokens` and `duration_ms` for that subagent invocation. Bash cannot read those values; the controller must read them off the notification and pass them as `PHASE_TOKENS` / `PHASE_DURATION_MS` to `scripts/budget.sh`, which maintains the accumulators (in `${AUTONOMO_LOG%.log}.budget`) and enforces both ceilings. Run it after every successful `phase-end` (including phase 3):
 
 ```bash
-TOTAL_TOKENS=$(( TOTAL_TOKENS + PHASE_TOKENS ))
-TOTAL_DURATION_MS=$(( TOTAL_DURATION_MS + PHASE_DURATION_MS ))
-TOTAL_DURATION_S=$(( TOTAL_DURATION_MS / 1000 ))
-if [ "${TOTAL_TOKENS}" -gt "${AUTONOMO_MAX_TOKENS}" ]; then
-  bash "${AUTONOMO_EMIT}" budget-exceeded "${PHASE}" "${PHASE_INDEX}" 3 tokens \
-       "${TOTAL_TOKENS}" "${AUTONOMO_MAX_TOKENS}" \
-       "${TOTAL_DURATION_S}" "${AUTONOMO_MAX_DURATION_S}"
-  # jump to §5 bail path; reason="Budget exceeded: tokens; ${TOTAL_TOKENS}/${AUTONOMO_MAX_TOKENS}"
-elif [ "${TOTAL_DURATION_S}" -gt "${AUTONOMO_MAX_DURATION_S}" ]; then
-  bash "${AUTONOMO_EMIT}" budget-exceeded "${PHASE}" "${PHASE_INDEX}" 3 duration \
-       "${TOTAL_TOKENS}" "${AUTONOMO_MAX_TOKENS}" \
-       "${TOTAL_DURATION_S}" "${AUTONOMO_MAX_DURATION_S}"
-  # jump to §5 bail path; reason="Budget exceeded: duration; ${TOTAL_DURATION_S}s/${AUTONOMO_MAX_DURATION_S}s"
+if ! bash "${SKILL_DIR}/scripts/budget.sh" check \
+       "${PHASE}" "${PHASE_INDEX}" 3 "${PHASE_TOKENS}" "${PHASE_DURATION_MS}"; then
+  # Script already emitted `budget-exceeded` (the ✗ Phase … BUDGET line on
+  # stdout, the structured event in the log) and wrote the bail reason to a
+  # sibling file. Read it and jump to §5 bail.
+  BAIL_REASON=$(<"${AUTONOMO_LOG%.log}.bail")
+  # → §5 bail with PHASE = the phase that just ran, REASON = $BAIL_REASON
 fi
 ```
+
+`BAIL_REASON` is one of `Budget exceeded: tokens; <total>/<max>` or `Budget exceeded: duration; <total>s/<max>s`. Tokens take precedence when both ceilings breach in the same call.
 
 A breach after phase 3 still bails — the work exists locally on the branch, but `/autonomo` does not auto-push or open a PR; the suggested next step in the report points at a manual `gh pr create`. Mid-phase runaway is not caught; that cost is sunk by the time the phase returns.
 
@@ -187,7 +178,7 @@ bash "${AUTONOMO_EMIT}" phase-end brainstorm 1 3 ${DURATION} \
      spec=${SPEC_PATH} assumptions=${ASSUMPTIONS_COUNT} tokens=${PHASE_TOKENS}
 ```
 
-Then run the per-phase budget accounting block above (set `PHASE=brainstorm` and `PHASE_INDEX=1`). If either ceiling is breached, jump to §5 with the bail path; do not proceed to §4.2.
+Then run the per-phase budget check above with `PHASE=brainstorm` and `PHASE_INDEX=1`. If `budget.sh` exits nonzero, read `BAIL_REASON` from the bail file and jump to §5 with the bail path; do not proceed to §4.2.
 
 If the return starts with `BLOCKED:`:
 
@@ -313,4 +304,6 @@ Operator-side footguns. (Subagent-side mistakes — escalation, recursion, scope
 - `references/maintenance.md` — how to re-run the pressure-test evals after editing the directive, and when to bump `plugin.json` `version`.
 - `scripts/emit.sh` — the dual-write helper. `bash scripts/emit.sh --help` prints the subcommand list.
 - `scripts/slugify.sh` — slug derivation used by §3 (kebab-case, ASCII, 40-char word-boundary truncation, `auto-<ts>` fallback). `scripts/tests/slugify.test.sh` is the canonical test set.
+- `scripts/pick-workspace.sh` — workspace decision used by §3 (dirty-tree refusal, default-branch detection, linked-worktree detection, "commits ahead of default" check). Prints `BRANCH_NAME` on stdout, exits nonzero with `BLOCKED: <reason>` on stderr. `scripts/tests/pick-workspace.test.sh` is the canonical test set.
+- `scripts/budget.sh` — per-run budget accumulator + ceiling check used by §4. Maintains state in `${AUTONOMO_LOG%.log}.budget`, emits `budget-exceeded` on a breach, and writes the bail reason to `${AUTONOMO_LOG%.log}.bail` for the controller to read. `scripts/tests/budget.test.sh` is the canonical test set.
 - `evals/evals.json` — pressure-test evals for the autonomy directive (one eval per rule, with prompts, fixture paths, machine-checkable expectations, and RED/GREEN baselines). `evals/fixtures/<eval-name>/` holds the canonical input files the runner copies into a per-run workspace. `evals/brainstorm-q-eval.json` separately grades clarifying-question quality (Q:/A: surfacing under rule 1). `evals/grade-progress-emission.py` is the deterministic grader for eval id=6.
