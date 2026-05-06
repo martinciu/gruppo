@@ -80,11 +80,10 @@ Inspect git state, decide where the work goes. Refuse to start from a non-clean 
 
 ```bash
 SLUG=$(bash "${SKILL_DIR}/scripts/slugify.sh" "$INPUT")
+RUN_TIMESTAMP=$(date +%s)
 ```
 
-The script kebab-cases the prompt, restricts to ASCII, truncates to 40 chars at a word boundary, and falls back to `auto-<unix-timestamp>` if the slugified result is empty (emoji-only, non-Latin script, punctuation-only, blank input). The algorithm lives in `scripts/slugify.sh`; `scripts/tests/slugify.test.sh` is the cases it has to pass — re-run those tests after any edit.
-
-Capture `RUN_TIMESTAMP=$(date +%s)` once at this point — used later for the report filename if the run bails.
+The slug rules live in `scripts/slugify.sh`; `scripts/tests/slugify.test.sh` is the canonical test set — re-run after any edit.
 
 **Decision table** (evaluated top-down — first matching row wins):
 
@@ -108,7 +107,7 @@ if [ -z "$(git log "origin/${DEFAULT}..HEAD" --oneline)" ]; then
 fi
 ```
 
-Store the resulting branch name as `BRANCH_NAME` — the PR opener step uses it. In the new-branch cases this is `autonomo/<slug>`; in the reuse-existing-branch case it's the current branch name.
+Store the resulting branch name as `BRANCH_NAME`. The PR opener (§5) uses it.
 
 **Open the run log.** Once `SLUG`, `RUN_TIMESTAMP`, and `BRANCH_NAME` exist:
 
@@ -124,7 +123,7 @@ echo "  tail live:  tail -f ${AUTONOMO_LOG}"
 
 ### 4. Dispatch phase subagents
 
-Dispatch three subagents in sequence using the Agent tool. Each invocation passes the autonomy directive (verbatim — read from `${SKILL_DIR}/references/autonomy-directive.md`) plus the dispatch prompt. After each return, check whether the output starts with `BLOCKED:` — that is the controlled-failure marker. Anything else (subagent crash, tool error) is uncontrolled failure; treat both the same way. The PR-open phase is handled by the controller directly — see §5.
+Dispatch three subagents in sequence using the Agent tool. Each invocation passes the autonomy directive (verbatim — read from `${SKILL_DIR}/references/autonomy-directive.md`) plus the dispatch prompt. After each return, check whether the output starts with `BLOCKED:`; treat any other failure (crash, tool error) the same way. The PR-open phase is handled by the controller directly — see §5.
 
 Every dispatch prompt body must include:
 
@@ -146,7 +145,7 @@ bash "${AUTONOMO_EMIT}" phase-start brainstorm 1 3
 
 Dispatch the Agent tool with prompt: `"Run the superpowers:brainstorming skill on this task. Produce a spec. Task: <prompt>. AUTONOMO_LOG=${AUTONOMO_LOG}  AUTONOMO_EMIT=${AUTONOMO_EMIT}"` plus the autonomy directive (verbatim).
 
-On a non-`BLOCKED:` return, parse `SPEC_PATH` from the subagent's output. Derive `ASSUMPTIONS_COUNT` from the log directly — every assumption already lands as `event=assumption` (see directive rule 5), so scraping the prose return for it duplicates an authoritative source and breaks silently when the return format drifts.
+On a non-`BLOCKED:` return, parse `SPEC_PATH` from the subagent's output. Derive `ASSUMPTIONS_COUNT` by counting `event=assumption` lines in the log — that's the authoritative surface (directive rule 5).
 
 ```bash
 DURATION=$(( $(date +%s) - PHASE_START ))
