@@ -1,0 +1,26 @@
+{
+  "skill_name": "session-finder",
+  "evals": [
+    {
+      "id": 1,
+      "name": "browse-by-date-and-repo",
+      "prompt": "what was I working on yesterday in the gruppo repo? give me the list of sessions and a one-liner about each so I can remember which one I want to jump back into",
+      "expected_output": "A compact table of sessions filtered to gruppo cwd and the previous day's date, with a short prompt/summary per row. No need to actually resume anything.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "find-by-topic-keyword",
+      "prompt": "i had a long chat sometime in the last couple weeks where i was iterating on the session-stats skill description — going back and forth on whether it should fire for embedded use like 'put cost in the PR body'. can you find that session for me and give me the command to jump back in?",
+      "expected_output": "Use --keyword to search for distinctive phrases (e.g. 'session-stats' + 'PR body' or 'embedded use'). Surface 1-3 candidates, then run --inspect on the most likely one to produce a resume command (cd or wt switch).",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "recover-orphaned-worktree",
+      "prompt": "i did `wt remove autonomo-eval-more` a while back but i actually want that conversation back — i was in the middle of debugging something. is there any way to get into that session, even though the worktree is gone?",
+      "expected_output": "List orphaned sessions matching 'autonomo-eval-more' (--only-orphaned --branch autonomo-eval-more). Inspect the match. The resume command should be `wt switch --create autonomo-eval-more && claude --resume <uuid>` plus the note that this must be run from inside the parent repo.",
+      "files": []
+    }
+  ]
+}

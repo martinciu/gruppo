@@ -14,6 +14,7 @@ that I use day-to-day. Install one, all, or none.
 |-----------------|-----------------------------------------------------------|
 | session-stats   | Token usage, cost, runtime, per-model breakdown           |
 | autonomo        | Turn a freeform task description into a PR unattended via superpowers |
+| session-finder  | Find and recover past sessions; produces the right resume command incl. worktree restore |
 
 ## Development
 

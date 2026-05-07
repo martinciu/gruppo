@@ -1,0 +1,10 @@
+{
+  "name": "session-finder",
+  "version": "0.2.0",
+  "description": "Find, inspect, and recover past Claude Code sessions — list by date / repo / branch / keyword and produce the right resume command, including worktree restore.",
+  "author": {
+    "name": "martinciu",
+    "email": "marcin.ciunelis@gmail.com"
+  },
+  "skills": ["./skills/session-finder"]
+}
