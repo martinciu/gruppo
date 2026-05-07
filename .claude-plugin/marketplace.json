@@ -17,6 +17,11 @@
       "name": "autonomo",
       "description": "Autonomously turn a freeform task description into a PR by running the superpowers pipeline (brainstorm → plan → execute → PR) without user interaction.",
       "source": "./plugins/autonomo"
+    },
+    {
+      "name": "session-finder",
+      "description": "Find, inspect, and recover past Claude Code sessions — list by date / repo / branch / keyword and produce the right resume command, including worktree restore.",
+      "source": "./plugins/session-finder"
     }
   ]
 }
