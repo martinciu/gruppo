@@ -38,6 +38,21 @@ publishing a change, register the working tree as a local marketplace:
 
 After verification, remove it: `/plugin marketplace remove gruppo`.
 
+## Commands
+
+`.claude/commands/mc/` contains personal slash commands that wire together
+the [superpowers](https://github.com/superpowers) workflow. They are not
+shipped with any plugin — symlink them manually if you want them:
+
+    ln -s ~/code/gruppo/.claude/commands/mc ~/.claude/commands/mc
+
+| Command                  | What it does                                              |
+|--------------------------|-----------------------------------------------------------|
+| `/mc:brainstorm-issue`   | Drive a GitHub issue from brainstorm → spec → plan → review-note |
+| `/mc:fix`                | Apply fixes at the right model tier (Haiku / Sonnet / inline) |
+| `/mc:review-pr`          | Review a finished PR against its plan and review-focus note |
+| `/mc:review-note`        | Distill brainstorm context into a one-page review-focus note |
+
 ## License
 
 MIT

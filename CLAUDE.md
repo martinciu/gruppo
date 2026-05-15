@@ -21,3 +21,14 @@ A marketplace repo. Each plugin under `plugins/<name>/` is self-contained.
 2. Add an entry to `.claude-plugin/marketplace.json`'s `plugins` array.
 3. Add a row to the README's plugin table.
 4. Open a PR. Never push to `main` directly.
+
+## Commands
+
+`.claude/commands/mc/` holds personal slash commands that are not shipped
+with any plugin. They live here so they can be version-controlled and
+symlinked from `~/.claude/commands/mc`. When adding a command:
+
+- Drop the `.md` file into `.claude/commands/mc/` (or a subdirectory).
+- Commands here are personal workflow helpers — keep them superpowers-skill
+  agnostic where possible so they work across repos.
+- Update the Commands table in README.md.
