@@ -14,6 +14,35 @@ A marketplace repo. Each plugin under `plugins/<name>/` is self-contained.
 - Dev edits go to the working tree. Never edit the cached marketplace copy
   at `~/.claude/plugins/marketplaces/gruppo/`.
 
+## Plugin anatomy
+
+Each plugin lives under `plugins/<name>/` with this structure:
+
+```
+plugins/<name>/
+  .claude-plugin/plugin.json      # manifest (name, version, skills, commands, …)
+  skills/<skill-name>/
+    SKILL.md                      # skill content loaded by Claude Code
+    references/                   # supporting docs referenced from SKILL.md
+    scripts/                      # shell helpers invoked by the skill
+    evals/                        # trigger JSONs + grading scripts for skill evals
+    <skill-name>-workspace/       # eval run output (gitignored via plugins/*/skills/*-workspace/)
+```
+
+Minimal `plugin.json`:
+
+```json
+{
+  "name": "my-plugin",
+  "version": "0.1.0",
+  "description": "One line.",
+  "author": { "name": "martinciu", "email": "marcin.ciunelis@gmail.com" },
+  "skills": ["./skills/my-skill"]
+}
+```
+
+Supported manifest fields beyond `skills`: `commands`, `hooks`, `agents`.
+
 ## Adding a new plugin
 
 1. Create `plugins/<name>/.claude-plugin/plugin.json` and content folders
