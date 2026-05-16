@@ -1,0 +1,475 @@
+---
+description: End-to-end Superpowers workflow — brainstorm → execute → review → fix → merge, with model and effort picks per phase
+---
+
+> **When invoked as `/mc:workflow`:** print the reference below
+> verbatim. Do not summarise, do not act on it, do not ask follow-up
+> questions. The user is pulling the doc into their session as a
+> quick-reference card. For a per-phase "what should I do next"
+> summary instead, the user wants `/mc:workflow-next`.
+
+---
+
+# Superpowers workflow — issue to merge
+
+The full path a piece of work travels, using the `/mc:*` commands plus
+Superpowers skills. Three sessions, three models, one PR.
+
+## At a glance
+
+| Phase           | Session | Model  | Effort         | Driver                                       |
+|-----------------|---------|--------|----------------|----------------------------------------------|
+| 1. Brainstorm + plan      | A         | Opus 4.7              | `max` (+ `ultrathink` on key turns)  | `/mc:brainstorm-issue <N>`                   |
+| 2. Execute + smoke test   | B (fresh) | Sonnet 4.6            | `high` ↓ `low`                       | `/superpowers:executing-plans` or `…:subagent-driven-development` |
+| 3. PR review              | C (fresh) | Opus 4.7              | `xhigh` (or `max`)                   | `/mc:review-pr <slug>`                       |
+| 4. Apply fixes (review + manual testing) | C | Opus 4.7 → Sonnet 4.6 / Haiku 4.5 | dispatcher `xhigh`, typers vary | `/mc:fix <description>` (per approved/observed fix) |
+| 5. Verify + merge         | B (resumed) | Sonnet 4.6          | `low`                                | run tests, push, merge                       |
+
+Two streams feed Phase 4: formal **PR review findings** (Phase 3 output)
+and **manual testing findings** (you driving the feature in a browser /
+CLI / shell). Both funnel through `/mc:fix` so the tier discipline
+applies regardless of origin.
+
+### Effort vocabulary (Claude Code v2.1.117+)
+
+`/effort` is the session-level dial. Supported levels per model:
+
+| Model       | Supported `/effort` levels                  | Default |
+|-------------|---------------------------------------------|---------|
+| Opus 4.7    | `low`, `medium`, `high`, `xhigh`, `max`     | `xhigh` |
+| Opus 4.6 / Sonnet 4.6 | `low`, `medium`, `high`, `max`    | `high`  |
+| Haiku 4.5   | *not supported* (no effort levels)          | —       |
+
+- `low`–`xhigh` persist across sessions. `max` applies to the current
+  session only (unless set via `CLAUDE_CODE_EFFORT_LEVEL`).
+- Setting an unsupported level falls back to the highest supported one
+  (e.g. `xhigh` on Opus 4.6 runs as `high`).
+- For a per-turn reasoning boost that does not change the session
+  effort, drop the `ultrathink` keyword into the prompt — see
+  [§ The `ultrathink` keyword](#the-ultrathink-keyword) below.
+- Subagent / skill frontmatter can set `effort:` to override the
+  session level when that subagent or skill is active — useful for SDD
+  per-task tiering.
+
+Why three sessions: Opus costs ~5× Sonnet and ~25× Haiku per token. Keep
+Opus for *deciding*; keep Sonnet/Haiku for *typing*. Fresh sessions for
+divergent (brainstorm) and convergent (review) phases — different cognitive
+modes shouldn't share context.
+
+---
+
+## The `ultrathink` keyword
+
+A per-turn reasoning boost that stacks on top of `/effort`. Include
+the literal string `ultrathink` anywhere in a prompt; Claude Code's
+preprocessor detects it and injects an in-context instruction asking
+the model to reason more deeply on that turn. **The `/effort` level
+sent to the API is unchanged** — `ultrathink` is orthogonal to the
+session dial, not a substitute for it. Under adaptive reasoning, the
+model decides how much extra deliberation the instruction warrants.
+
+Two controls, two scopes:
+
+| Control       | Scope            | Persistence                        |
+|---------------|------------------|------------------------------------|
+| `/effort`     | Whole session    | Persists across sessions (`low`–`xhigh`); session-only for `max` |
+| `ultrathink`  | Single turn      | Per-prompt; reverts immediately afterwards |
+
+### Where the boost earns its tokens
+
+- **Phase 1, highest-stakes clarifying turn** — the question whose
+  answer reshapes the whole spec.
+- **Phase 1, design-shape selection** — when the brainstorm narrows
+  to two or three approaches and you ask "which?".
+- **Phase 3, reviewing a high-risk `Replaced by:` clause** — cases
+  where a missing replacement could silently work coherently without
+  the rejected approach (the easiest drift to miss).
+- **Phase 4, inline architectural fix** — when `/mc:fix` keeps a fix
+  inline because it needs Opus reasoning, drop `ultrathink` into the
+  fix prompt's decision turn.
+- Any moment you would otherwise raise `/effort` to `max` for one
+  question and lower it after — `ultrathink` saves the round-trip.
+
+### Where it does *not* earn its tokens
+
+- Mechanical edits, file scaffolding, test runs, format-fix typing —
+  no decision surface for extra reasoning to grip on.
+- Routine status / clarifying / lookup turns — overthinking burns
+  latency without changing the answer.
+- Sessions already on `/effort max` — the keyword still injects the
+  instruction, but cannot exceed the adaptive ceiling; diminishing
+  returns set in fast.
+- Haiku 4.5 subagents — Haiku has no effort dial; the keyword has no
+  hook to amplify.
+
+### Not to be confused with
+
+`ultrathink` is the **only** in-prompt keyword Claude Code recognises.
+Phrases like *"think"*, *"think hard"*, *"think harder"*, *"think
+more"*, and *"megathink"* are passed through as ordinary prompt text
+— they may influence the model the way any instruction would, but the
+preprocessor does not treat them specially. Earlier guides that
+listed those as tiered triggers reflect pre-adaptive-reasoning
+behaviour.
+
+### Caveats
+
+- Available only in Claude Code CLI. claude.ai web chat and direct
+  Anthropic API calls do not recognise the keyword.
+- Re-introduced in Claude Code v2.1.68 (2026-03-04) after a brief
+  deprecation in early 2026. Documentation older than that may
+  contradict current behaviour.
+
+---
+
+## Phase 1 — Brainstorm + plan
+
+**Session A · Opus 4.7 · `/effort max` (or `xhigh` default) · `ultrathink`
+on key brainstorm turns**
+
+Open a fresh Opus session in the repo. Run:
+
+```
+/mc:brainstorm-issue <issue-number>
+```
+
+The command drives six steps without stopping in the middle:
+
+1. **Fetch the issue** via `gh issue view`.
+2. **Classify surfaces** (language, framework, libraries, subsystem) and
+   load the relevant skills via the `Skill` tool *before* proposing
+   design. If the issue touches a third-party library, ground
+   recommendations with `mcp__plugin_context7_context7__resolve-library-id`
+   + `query-docs`. Load `superpowers:brainstorming` last.
+3. **Brainstorm → spec** following `superpowers:brainstorming` exactly.
+   One clarifying question at a time. No code, no design, no plan until
+   intent is locked. Spec saves to `.superpowers/specs/`.
+4. **Write the plan** via `superpowers:writing-plans`. Plan saves to
+   `.superpowers/plans/`. Reference the spec path and issue number in
+   frontmatter. State chosen execution mode (inline vs SDD) and reason
+   in the plan.
+5. **Review-note** via `/mc:review-note <slug>` — distills the brainstorm
+   to one page for a future reviewer. Saves to
+   `.superpowers/review-notes/<slug>.md`.
+6. **Hand off.** Print the three artefact paths, recommend inline vs
+   SDD with a one-line reason, and emit a paste-ready slash command
+   for Session B.
+
+**Effort:** raise the session to `/effort max` for the brainstorm — this
+is the only phase where compute-spent-thinking has outsized leverage on
+the eventual diff. Drop the `ultrathink` keyword into the prompt on
+specific high-stakes turns (clarifying-question synthesis, design-shape
+selection) for a per-turn boost on top of the session level.
+
+**Output of phase:** spec, plan, review-note on disk, all under
+`.superpowers/` (gitignored, never committed).
+
+---
+
+## Phase 2 — Execute + smoke test
+
+**Session B · Sonnet 4.6 · `/effort high` (default) → drop to `low` /
+`medium` for mechanical runs**
+
+Start a *new* Sonnet session (`claude --model sonnet`, or model-picker).
+Paste the command printed by Phase 1:
+
+```
+/superpowers:executing-plans .superpowers/plans/<slug>.md
+```
+
+…or, if SDD was recommended:
+
+```
+/superpowers:subagent-driven-development .superpowers/plans/<slug>.md
+```
+
+### Inline vs SDD — pick once, in Phase 1
+
+- **Inline** (`executing-plans`) — most tasks are mechanical/byte-exact
+  (config, dotfiles, TOML/YAML/HTML fragments, cheatsheets). Skips
+  per-task review token overhead.
+- **SDD** (`subagent-driven-development`) — most tasks are real code
+  with logic and judgment (~50–300 LOC/task, multi-file integration).
+  Two-stage review (spec compliance, then code quality) earns its cost.
+- **Mixed plans:** start inline, switch to SDD only if subsequent
+  tasks are heavier than the first.
+
+### Subagent tiers inside SDD
+
+SDD dispatches one subagent per task. Match the *subagent's* model and
+effort to the task, not the controller's:
+
+| Task profile                                 | Subagent model | Effort                |
+|----------------------------------------------|----------------|-----------------------|
+| Mechanical, single file, exact lines         | Haiku 4.5      | n/a (no effort dial)  |
+| Multi-file integration, branching logic      | Sonnet 4.6     | `medium` or `high`    |
+| Architectural / cross-cutting judgment       | Inline (Opus 4.7 controller) | `xhigh` |
+
+Set `model:` and `effort:` in the subagent prompt frontmatter (or as
+arguments to the dispatch tool) so the override applies only while
+that subagent runs.
+
+### Smoke test before opening the PR
+
+Type checking and test suites verify code *correctness*, not feature
+*correctness*. Before opening the PR, drive the feature yourself:
+
+- **Frontend changes** — start the dev server, exercise the golden
+  path and the obvious edge cases in a browser. Watch the network tab
+  and console for regressions.
+- **CLI / shell** — run the command on at least one realistic input;
+  check exit codes, stderr, and any side effects (files written,
+  state mutated).
+- **Backend / API** — hit the endpoint with `curl` / `httpie` against
+  the happy path and one failure mode.
+
+Record any issues you find as a list — they become Phase 4 input
+alongside review findings. If you cannot test the UI (no dev env,
+external dependency missing), say so explicitly in the PR body; don't
+claim it works.
+
+### End-of-phase checklist
+
+- All plan tasks marked complete.
+- Tests pass locally.
+- Use `superpowers:verification-before-completion` before claiming done.
+- Smoke test passes (or its absence is explicitly flagged).
+- Commit on a feature branch; open a draft PR.
+
+---
+
+## Phase 3 — PR review
+
+**Session C · Opus 4.7 · `/effort xhigh` (default) — bump to `max` for
+large or high-stakes diffs**
+
+Start a *new* Opus session — fresh eyes, no Phase 1 brainstorm in
+context. Run:
+
+```
+/mc:review-pr <slug>
+```
+
+The command reads three inputs:
+
+1. `.superpowers/plans/<slug>.md`
+2. `.superpowers/review-notes/<slug>.md`
+3. The PR diff (`gh pr diff <N>`)
+
+It produces a structured report:
+
+- **Findings** — numbered globally, ordered by severity (🔴 🟡 🟢),
+  tagged `[drift]` or `[lens]`, each with a file:line citation.
+- **Clear** — what landed correctly so a follow-up reviewer can skip
+  those.
+- **Recommendations** — *apply / group / defer / drop*, referencing
+  finding numbers only.
+
+Then it **stops** and asks which findings to apply. Nothing auto-fixes.
+
+**Effort:** `xhigh` is the calibrated default for Opus 4.7 coding work.
+For diffs that span many files, touch a security or migration surface,
+or carry a long `Replaced by:` list to verify, bump the session to
+`/effort max` before running `/mc:review-pr` and drop it back to
+`xhigh` afterward. Each `Replaced by:` clause is a per-line
+verification check, so extra reasoning budget here directly raises
+catch-rate.
+
+---
+
+## Phase 4 — Apply fixes (review + manual testing)
+
+**Session C (continues) · Opus 4.7 dispatcher (`/effort xhigh`) →
+Haiku 4.5 / Sonnet 4.6 / inline Opus**
+
+Two input streams feed this phase. Treat them identically — same
+dispatcher, same tier picker, same command.
+
+### Stream A — formal review findings
+
+Reply to the Phase 3 review prompt with the approved subset:
+
+```
+1, 3, 5
+1-4
+accept recommendations
+issue: 6, 8        # spin those off as follow-ups instead of fixing
+none
+```
+
+### Stream B — manual testing findings
+
+Bring observations from any manual testing pass — Phase 2 smoke
+test, mid-review pull-and-poke, post-fix regression check, final
+sanity pass before merge. Frame each as a fix brief the dispatcher
+can route: file path or feature target, observed vs expected
+behaviour, reproduction steps if non-obvious. Severity is your call;
+🔴 must-fix gates merge, 🟡 should-fix is judgement, 🟢 is a nit.
+
+Example brief:
+
+> Frontend: `src/components/Chart.tsx` — toggling unit while a hover
+> tooltip is open keeps the stale unit string visible until next
+> mouse-move. Expected: tooltip text updates immediately. Repro: hover
+> any bar, click unit toggle, do not move mouse.
+
+### Dispatching the fix
+
+For each approved or observed fix, invoke:
+
+```
+/mc:fix <description>
+```
+
+The command runs a decision tree per fix:
+
+```
+Brief is mechanical?
+├── Trivially mechanical (single file, exact bytes)        → Haiku subagent
+├── Mechanical with judgment ("match pattern", multi-file) → Sonnet subagent
+└── Needs real judgment                                    → inline (Opus)
+```
+
+If a fix needs Opus reasoning, the dispatcher does it inline — no
+round-trip through a lower-tier subagent. If a fix surfaces an
+out-of-scope concern, `/mc:fix` proposes filing a new issue and
+**waits for explicit "yes"** before running `gh issue create`.
+
+**Effort per fix:**
+- Haiku 4.5 subagent: n/a — Haiku has no effort dial, the brief just
+  carries the exact bytes.
+- Sonnet 4.6 subagent: `medium` (pattern-matching against existing
+  style needs some reasoning but not the full session default).
+- Inline Opus 4.7: keep the session at `xhigh`; bump to `max` only if
+  the fix has architectural ramifications. Drop the `ultrathink`
+  keyword into the inline-fix prompt for a per-turn boost when a single
+  decision dominates the fix (e.g. picking a data-shape change).
+
+**End of phase:** dispatcher reads each returned diff, verifies intent,
+stages and commits. Does **not** push from Session C — leave the
+controller's commit to the execution session that owns the branch.
+
+**Iterate, don't linger.** A manual-testing fix often surfaces another
+behaviour worth poking. Cycle Phase 4 ↔ smoke test as many rounds as
+needed before promoting to Phase 5; each round should shrink the
+finding list. Stop when a smoke pass yields zero new 🔴/🟡 findings.
+
+---
+
+## Phase 5 — Verify and merge
+
+**Session B (resumed) · Sonnet 4.6 · `/effort low`**
+
+Switch back to the execution session (the one that owns the branch):
+
+1. Pull the fix commits from Phase 4 if they landed via a separate
+   working copy; otherwise they are already local.
+2. Re-run the full test suite. `superpowers:verification-before-completion`
+   gates the "ready to merge" claim.
+3. **Final smoke test.** One more manual pass on the golden path plus
+   anything Phase 4 changed. New findings loop back to Phase 4.
+4. Push the branch.
+5. Mark the PR ready for review (or self-merge if the workflow allows).
+6. Once merged, `superpowers:finishing-a-development-branch` handles
+   cleanup decisions (delete branch, prune worktree, etc.).
+
+**Effort:** `low`. Test runs and `git push` need no reasoning budget;
+`low` is the cheapest effort setting Sonnet supports.
+
+---
+
+## Decision quick-reference
+
+### When to spawn a new session
+
+- **Always new** between Phase 1 (Opus brainstorm) and Phase 2 (Sonnet
+  execute) — different model, different cognitive mode.
+- **Always new** between Phase 2 and Phase 3 — fresh-eyes review is the
+  whole point. The Phase 3 Opus session has the plan and review-note,
+  not the brainstorm transcript.
+- **Same session** for Phase 3 → Phase 4 — the reviewer dispatches
+  fixes; sharing context is the win.
+- **Resume** Phase 2's session for Phase 5 — it owns the branch state
+  and the test environment.
+
+### Where manual testing fits
+
+Smoke testing is interleaved, not a discrete phase. Three natural
+checkpoints:
+
+1. **End of Phase 2**, before opening the PR — catches obvious
+   feature-correctness misses the test suite cannot.
+2. **Between Phase 3 and Phase 4 (optional)** — pull the PR branch
+   locally if the review surfaced behavioural questions the diff
+   alone cannot answer.
+3. **End of Phase 5**, before marking the PR ready — final sanity
+   check on the post-fix state.
+
+All findings, regardless of checkpoint, are fix briefs for `/mc:fix`
+in Session C (the dispatcher). You — the human — drive the feature
+and report what you see; the dispatcher routes each finding to the
+right tier.
+
+### When to stay inline vs SDD
+
+State the choice in the plan in one sentence:
+
+- *"Inline — tasks are byte-exact TOML/HTML edits."*
+- *"SDD — each task is ~150 LOC of TS with branching logic."*
+
+Forces honesty about the call.
+
+### Model + effort cheat-sheet
+
+| Activity                      | Model      | `/effort`        | One-off keyword         |
+|-------------------------------|------------|------------------|-------------------------|
+| Brainstorm / spec             | Opus 4.7   | `max`            | `ultrathink` on key turns |
+| Plan writing                  | Opus 4.7   | `xhigh`          | —                       |
+| Review-note distillation      | Opus 4.7   | `xhigh`          | —                       |
+| Inline execution (mechanical) | Sonnet 4.6 | `low`            | —                       |
+| Inline execution (logic)      | Sonnet 4.6 | `high`           | —                       |
+| SDD subagent (mechanical)     | Haiku 4.5  | n/a              | —                       |
+| SDD subagent (multi-file)     | Sonnet 4.6 | `medium`–`high`  | —                       |
+| PR review                     | Opus 4.7   | `xhigh` (`max` for big diffs) | —          |
+| Fix dispatch (decision)       | Opus 4.7   | `xhigh`          | —                       |
+| Fix typing (mechanical)       | Haiku 4.5  | n/a              | —                       |
+| Fix typing (judgment)         | Sonnet 4.6 | `medium`         | —                       |
+| Fix typing (architectural)    | Opus 4.7 inline | `xhigh` (`max` if needed) | `ultrathink` |
+| Verify + merge                | Sonnet 4.6 | `low`            | —                       |
+
+Set effort with `/effort <level>` in the session, with `--effort
+<level>` on launch, or via `effort:` frontmatter on a skill or subagent
+to scope the override to that role. The `CLAUDE_CODE_EFFORT_LEVEL` env
+var beats all of those when set.
+
+### Artefact locations (gitignored)
+
+- `.superpowers/specs/<slug>.md`
+- `.superpowers/plans/<slug>.md`
+- `.superpowers/review-notes/<slug>.md`
+
+None of these are committed. The PR carries the diff; the review-note
+carries the deliberation.
+
+---
+
+## Why this shape works
+
+- **Divergent vs convergent split.** Brainstorm explores; review
+  converges. Different sessions keep their context shapes from
+  contaminating each other.
+- **Opus decides, cheaper models type.** The expensive tokens go to
+  the decisions; the cheap tokens go to the typing. `/mc:fix` makes
+  the tier pick a reflex, not a per-fix question.
+- **Review-note as the distillation interface.** The reviewer doesn't
+  re-read the brainstorm — that's the whole point. `Replaced by:`
+  clauses turn rejected approaches into greppable invariants in the
+  diff.
+- **Fresh review-session eyes.** A reviewer who watched the
+  brainstorm rationalises the same misses. A reviewer with only the
+  plan + note + diff catches drift.
+- **Two complementary fix streams.** Formal review catches structural
+  drift the diff makes visible; manual testing catches behavioural
+  drift the diff makes invisible. Both feed `/mc:fix`, so the tier
+  discipline is uniform regardless of where a finding originated.
