@@ -3,29 +3,25 @@ description: Find your place in the Superpowers workflow and get the next 1–2 
 argument-hint: <phase>
 ---
 
-You are helping the user navigate the Superpowers workflow described
-in `.claude/commands/mc/workflow.md`. Source-of-truth content lives
-in that file — load it on every invocation so any updates flow
-through automatically.
+Answer "what next?" by printing the matching phase block below. Phase
+summaries are inlined — no file Read needed. The full reference lives
+in `/mc:workflow`; this command is the slim navigator.
 
 ## Steps
 
-1. **Load the workflow.** Use the `Read` tool on
-   `.claude/commands/mc/workflow.md` so you have the full phase
-   content, model + effort picks, and `/mc:*` command references in
-   context.
+1. **Resolve the phase from `$ARGUMENTS`.** Match leniently:
+   - `1` / `brainstorm` / `plan` / `spec` → Phase 1
+   - `2` / `execute` / `exec` / `code` → Phase 2
+   - `3` / `review` / `pr` → Phase 3
+   - `4` / `fix` / `apply` / `dispatch` → Phase 4
+   - `5` / `verify` / `merge` / `done` → Phase 5
+   - `0` / `fresh` / `start` / `new` → Phase 1
+   - empty or unrecognised → step 2
 
-2. **Determine the phase.** `$ARGUMENTS` may carry a phase identifier
-   (number `1`–`5`, a phase name like `brainstorm` / `execute` /
-   `review` / `fix` / `verify`, or `fresh` / `start` / `0` to mean
-   "no phase yet, starting from scratch"). Parse it leniently — match
-   on intent, not strict format.
-
-   If `$ARGUMENTS` is empty or you cannot confidently parse it, ask:
+2. **Picker** (only when step 1 yields no phase). Ask:
 
    ```
    Which phase are you on?
-
      1. Brainstorm + plan
      2. Execute + smoke test
      3. PR review
@@ -36,47 +32,139 @@ through automatically.
    Reply with the number or a keyword.
    ```
 
-   Treat "starting fresh" / "0" as Phase 1.
+   Apply step 1's mapping to the answer.
 
-3. **Return a tight summary for that phase.** Include only:
-   - Session (A / B / C; fresh or resumed) and whether to spawn a
-     new Claude Code session for it.
-   - Model + `/effort` level, drawn directly from the doc's cheat-sheet.
-   - Whether `ultrathink` is worth dropping into specific turns within
-     that phase.
-   - The exact `/mc:*` command to run, paste-ready in a fenced code
-     block. Substitute concrete arguments where you can infer them
-     from the conversation; otherwise leave `<placeholder>`.
-   - One sentence on what that command does.
-   - Pointer to the next phase, including the `/mc:workflow-next <N>`
-     invocation that would advance the user.
+3. **Print the matching phase block from below verbatim.** Do not
+   paraphrase, do not act on it, do not ask follow-ups. The user runs
+   the command themselves and re-invokes `/mc:workflow-next <next>`
+   when ready.
 
-   Keep the response **under 15 lines.** Distill — do not quote long
-   passages from the doc verbatim. If the phase needs no `/mc:*`
-   command (e.g. Phase 5 verify + merge is mostly running tests and
-   `git push`), say so plainly with the 3–4 concrete actions.
+## Mid-cycle nuance
 
-4. **Stop.** Do not auto-advance into the next phase. Do not start
-   running the command yourself. The user invokes the command when
-   they are ready, then re-runs `/mc:workflow-next` for the next
-   summary.
+Phase 4 loops with smoke testing. If the user signals they just
+applied a fix and are about to retest, print Phase 4 and remind them
+the loop closes when a smoke pass yields zero new 🔴/🟡. If they
+signal they just retested and found something, print Phase 4 again
+with the fix-brief framing. Read which side of the loop they're on
+from context.
 
-## What to skip
+---
 
-- Don't print the entire workflow doc back — that's what
-  `/mc:workflow` is for.
-- Don't restate the rationale for the workflow's shape (three
-  sessions, divergent vs convergent, etc.); the user has the doc.
-  Just answer "what next?".
-- Don't ask process-meta questions ("should I include effort
-  guidance?"). Always include the bullets listed in step 3 — that is
-  the shape.
+## Phase 1 — Brainstorm + plan
 
-## When the phase is mid-cycle
+**Session A (fresh) · Opus 4.7 · `/effort max`** (use `xhigh` default if
+you'd rather not bump for one issue).
 
-Phase 4 ↔ smoke test cycles between "apply a fix" and "retest." If
-the user says they just applied a fix and are about to retest, the
-right summary is Phase 4 with a closing pointer to Phase 5 once
-testing yields zero new findings. If they say they just retested and
-found something, the right summary is Phase 4 again with the fix-brief
-template. Read which side of the loop they're on from context.
+`ultrathink` on clarifying-question synthesis and design-shape selection
+turns — the moments where one decision reshapes the whole spec.
+
+```
+/mc:brainstorm-issue <issue-number>
+```
+
+Drives the issue end-to-end in one session: `gh issue view` → skill load
+→ context7 docs → brainstorm → spec → plan → review-note. Outputs three
+artefacts under `.superpowers/` (specs / plans / review-notes — all
+gitignored) and a paste-ready handoff command for Session B.
+
+Next: `/mc:workflow-next 2` once the handoff command is printed.
+
+---
+
+## Phase 2 — Execute + smoke test
+
+**Session B (fresh) · Sonnet 4.6 · `/effort high`** (drop to `low` /
+`medium` on plans that are mostly mechanical).
+
+`ultrathink` not typically needed here.
+
+```
+/superpowers:executing-plans .superpowers/plans/<slug>.md
+```
+
+…or, if SDD was recommended in Phase 1:
+
+```
+/superpowers:subagent-driven-development .superpowers/plans/<slug>.md
+```
+
+Walks the plan tasks. SDD dispatches per-task subagents — **Haiku 4.5**
+for mechanical edits, **Sonnet 4.6** for multi-file logic, inline Opus
+for architectural judgment. Use `superpowers:verification-before-completion`
+as the done-gate. Smoke-test before opening the draft PR.
+
+Next: `/mc:workflow-next 3` once the draft PR is open.
+
+---
+
+## Phase 3 — PR review
+
+**Session C (fresh) · Opus 4.7 · `/effort xhigh`** (bump to `max` for
+diffs spanning many files, touching security/migration, or carrying a
+long `Replaced by:` list).
+
+`ultrathink` into the `Replaced by:` verification turn when reviewing
+high-stakes rejected approaches — those are the easiest drift to miss.
+
+```
+/mc:review-pr <slug>
+```
+
+Reads `.superpowers/plans/<slug>.md` + `.superpowers/review-notes/<slug>.md`
++ the PR diff. Produces a structured findings report — globally
+numbered, ordered 🔴 / 🟡 / 🟢, tagged `[drift]` / `[lens]`, each with
+a `file:line` citation. Then stops with apply / group / defer / drop
+recommendations and asks which subset to apply.
+
+Next: `/mc:workflow-next 4` to dispatch the approved fixes.
+
+---
+
+## Phase 4 — Apply fixes (review + manual testing)
+
+**Session C (continues) · Opus 4.7 dispatcher · `/effort xhigh`** →
+typers **Haiku 4.5** / **Sonnet 4.6** / inline Opus.
+
+Two input streams, same dispatcher: formal review findings (the subset
+you approved in Phase 3) and manual testing observations (smoke-test
+bugs). Frame manual findings as briefs: *file/target · observed vs
+expected · repro steps if non-obvious*.
+
+`ultrathink` into the inline-Opus turn when a single architectural
+decision dominates the fix.
+
+```
+/mc:fix <description>
+```
+
+Routes each fix to the right tier — Haiku for mechanical, Sonnet for
+judgment, inline Opus for architectural. Dispatcher reads each returned
+diff, verifies intent, stages and commits inside Session C.
+
+After the commit lands: switch back to **Session B** to push (Session C
+doesn't own the branch). Smoke-test again — new findings loop back
+here. Zero new 🔴/🟡 → Phase 5.
+
+Next: `/mc:workflow-next 5` once the loop closes clean.
+
+---
+
+## Phase 5 — Verify + merge
+
+**Session B (resumed) · Sonnet 4.6 · `/effort low`**
+
+No `/mc:*` command drives this phase — manual checklist:
+
+1. Pull fix commits if they landed in a separate working copy;
+   otherwise already local.
+2. Re-run the full test suite. Invoke
+   `superpowers:verification-before-completion` as the "ready to merge"
+   gate.
+3. Final smoke test on the golden path + whatever Phase 4 changed.
+   New findings → back to Phase 4.
+4. Push the branch.
+5. Mark the PR ready (or self-merge if your workflow allows).
+6. After merge: invoke `superpowers:finishing-a-development-branch` to
+   handle cleanup — delete branch, prune worktree, etc.
+
+Next: nothing — you're done. Open a fresh Session A on the next issue.
