@@ -224,10 +224,17 @@ Type checking and test suites verify code *correctness*, not feature
 - **Backend / API** — hit the endpoint with `curl` / `httpie` against
   the happy path and one failure mode.
 
-Record any issues you find as a list — they become Phase 4 input
-alongside review findings. If you cannot test the UI (no dev env,
-external dependency missing), say so explicitly in the PR body; don't
-claim it works.
+Most pre-PR smoke bugs are typer-tier — the Sonnet agent that just
+wrote them can fix them inline in Session B. Edit the code, re-smoke,
+repeat until a pass yields zero new findings, *then* open the draft
+PR. Don't open the PR with known smoke failures.
+
+Stop and surface to user only if a bug suggests a design flaw — that
+may warrant returning to Phase 1 brainstorming rather than papering
+over with a quick fix.
+
+If you cannot test the UI (no dev env, external dependency missing),
+say so explicitly in the PR body; don't claim it works.
 
 ### End-of-phase checklist
 
@@ -298,14 +305,17 @@ issue: 6, 8        # spin those off as follow-ups instead of fixing
 none
 ```
 
-### Stream B — manual testing findings
+### Stream B — post-PR manual testing findings
 
-Bring observations from any manual testing pass — Phase 2 smoke
-test, mid-review pull-and-poke, post-fix regression check, final
-sanity pass before merge. Frame each as a fix brief the dispatcher
-can route: file path or feature target, observed vs expected
-behaviour, reproduction steps if non-obvious. Severity is your call;
-🔴 must-fix gates merge, 🟡 should-fix is judgement, 🟢 is a nit.
+Bring observations from any *post-PR* manual testing pass — mid-review
+pull-and-poke, post-fix regression check, Phase 5 final sanity pass.
+**Pre-PR smoke bugs do not reach this dispatcher** — they're fixed
+inline in Session B during Phase 2 (see Phase 2 § Smoke test).
+
+Frame each finding as a fix brief the dispatcher can route: file path
+or feature target, observed vs expected behaviour, reproduction steps
+if non-obvious. Severity is your call; 🔴 must-fix gates merge,
+🟡 should-fix is judgement, 🟢 is a nit.
 
 Example brief:
 
@@ -368,7 +378,9 @@ Switch back to the execution session (the one that owns the branch):
 2. Re-run the full test suite. `superpowers:verification-before-completion`
    gates the "ready to merge" claim.
 3. **Final smoke test.** One more manual pass on the golden path plus
-   anything Phase 4 changed. New findings loop back to Phase 4.
+   anything Phase 4 changed. Typer-tier findings → fix inline in
+   Session B and re-smoke. Architectural / mixed-tier findings →
+   resume or respawn Session C and dispatch via `/mc:fix`.
 4. Push the branch.
 5. Mark the PR ready for review (or self-merge if the workflow allows).
 6. Once merged, `superpowers:finishing-a-development-branch` handles
@@ -396,20 +408,25 @@ Switch back to the execution session (the one that owns the branch):
 ### Where manual testing fits
 
 Smoke testing is interleaved, not a discrete phase. Three natural
-checkpoints:
+checkpoints — and where each fix lands depends on whether the PR is
+open yet:
 
-1. **End of Phase 2**, before opening the PR — catches obvious
-   feature-correctness misses the test suite cannot.
-2. **Between Phase 3 and Phase 4 (optional)** — pull the PR branch
-   locally if the review surfaced behavioural questions the diff
-   alone cannot answer.
-3. **End of Phase 5**, before marking the PR ready — final sanity
-   check on the post-fix state.
+1. **End of Phase 2**, before opening the PR — caught in Session B.
+   **Fix inline in Session B** (same Sonnet agent that wrote the
+   buggy code). Re-smoke until clean, *then* open the draft PR.
+2. **Between Phase 3 and Phase 4 (optional)** — caught while
+   Session C is active. **Send findings to `/mc:fix`** in Session C
+   alongside the review-driven fixes.
+3. **End of Phase 5**, before marking the PR ready — caught in
+   Session B. **Fix inline in Session B** for typer-tier bugs;
+   escalate to Session C (resume or respawn) only if a bug needs
+   Opus dispatcher reasoning (architectural, mixed-tier).
 
-All findings, regardless of checkpoint, are fix briefs for `/mc:fix`
-in Session C (the dispatcher). You — the human — drive the feature
-and report what you see; the dispatcher routes each finding to the
-right tier.
+Principle: **the session that's currently active, with the right
+tier for the work, is where the fix happens.** Session B (Sonnet)
+handles typer-tier smoke fixes inline; Session C (Opus dispatcher
+via `/mc:fix`) handles fixes that benefit from tier routing —
+typically batches of post-review findings.
 
 ### When to stay inline vs SDD
 
@@ -469,7 +486,10 @@ carries the deliberation.
 - **Fresh review-session eyes.** A reviewer who watched the
   brainstorm rationalises the same misses. A reviewer with only the
   plan + note + diff catches drift.
-- **Two complementary fix streams.** Formal review catches structural
-  drift the diff makes visible; manual testing catches behavioural
-  drift the diff makes invisible. Both feed `/mc:fix`, so the tier
-  discipline is uniform regardless of where a finding originated.
+- **Two complementary fix streams, routed by session.** Formal review
+  catches structural drift the diff makes visible; manual testing
+  catches behavioural drift the diff makes invisible. Pre-PR smoke
+  fixes happen inline in Session B (Sonnet wrote the bug, Sonnet
+  fixes it); post-PR fixes go through `/mc:fix` in Session C (the
+  Opus dispatcher routes by tier). Session locality wins over uniform
+  routing.

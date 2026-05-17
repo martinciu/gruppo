@@ -93,6 +93,12 @@ for mechanical edits, **Sonnet 4.6** for multi-file logic, inline Opus
 for architectural judgment. Use `superpowers:verification-before-completion`
 as the done-gate. Smoke-test before opening the draft PR.
 
+**Smoke bugs found here → fix inline in Session B**, then re-smoke
+until clean. The Sonnet agent that wrote the code has fresh context
+to fix it; no need to spawn Session C. Open the draft PR only when a
+smoke pass yields zero new findings. Stop and surface to user only if
+a bug suggests a design flaw (may warrant re-brainstorming).
+
 Next: `/mc:workflow-next 3` once the draft PR is open.
 
 ---
@@ -126,9 +132,12 @@ Next: `/mc:workflow-next 4` to dispatch the approved fixes.
 typers **Haiku 4.5** / **Sonnet 4.6** / inline Opus.
 
 Two input streams, same dispatcher: formal review findings (the subset
-you approved in Phase 3) and manual testing observations (smoke-test
-bugs). Frame manual findings as briefs: *file/target · observed vs
-expected · repro steps if non-obvious*.
+you approved in Phase 3) and **post-PR** manual testing observations
+(mid-review pull-and-poke, post-fix regression, Phase 5 final pass).
+Pre-PR smoke bugs were already fixed inline in Session B during
+Phase 2 — they don't reach this dispatcher. Frame manual findings as
+briefs: *file/target · observed vs expected · repro steps if
+non-obvious*.
 
 `ultrathink` into the inline-Opus turn when a single architectural
 decision dominates the fix.
@@ -161,7 +170,9 @@ No `/mc:*` command drives this phase — manual checklist:
    `superpowers:verification-before-completion` as the "ready to merge"
    gate.
 3. Final smoke test on the golden path + whatever Phase 4 changed.
-   New findings → back to Phase 4.
+   Typer-tier findings → fix inline in Session B and re-smoke.
+   Architectural / mixed-tier findings → resume or respawn Session C
+   for `/mc:fix`.
 4. Push the branch.
 5. Mark the PR ready (or self-merge if your workflow allows).
 6. After merge: invoke `superpowers:finishing-a-development-branch` to
