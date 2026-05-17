@@ -61,3 +61,13 @@ symlinked from `~/.claude/commands/mc`. When adding a command:
 - Commands here are personal workflow helpers — keep them superpowers-skill
   agnostic where possible so they work across repos.
 - Update the Commands table in README.md.
+
+## Optional: beads-backed feature state
+
+When `.beads/` is initialised in a worktree, the `/mc:*` slash commands
+pin per-feature state (issue #, slug, PR #, review findings) into bd.
+See `.claude/commands/mc/workflow.md` § "Beads as the per-feature state
+spine" for setup and behaviour.
+
+In repos without `.beads/`, the commands behave exactly as documented —
+no extra prompts.

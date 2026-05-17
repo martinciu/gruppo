@@ -471,6 +471,48 @@ carries the deliberation.
 
 ---
 
+## Beads as the per-feature state spine (optional)
+
+When `.beads/` is initialised in the worktree, the `/mc:*` commands
+additionally pin per-feature state to bd:
+
+- `/mc:brainstorm-issue` creates a feature bead with `branch:<name>`
+  label and `github-issue:` / `slug:` comments.
+- `/mc:review-pr` adds a `pr: #N` comment and creates one child finding
+  bead per review entry. Argument `<slug>` becomes optional — looked up
+  by branch label.
+- `/mc:fix` runs a four-state claim flow per finding (claim →
+  awaiting_review → close) with `BEADS_ACTOR` distinguishing the
+  subagent from the controller in `bd history`.
+- `/mc:workflow-next` infers the current phase from the feature bead's
+  comments and the status of its child findings.
+
+In repos without `.beads/`, none of this fires — every `/mc:*` command
+behaves exactly as documented above.
+
+### Setup (one-time per repo)
+
+    cd /path/to/main-worktree
+    bd init --stealth --non-interactive
+
+This adds `.beads/` and `.claude/settings.local.json` to
+`.git/info/exclude` (local-only, never committed). Does NOT modify
+`.claude/settings.json`. Collaborators on a public repo see nothing.
+
+Also add `bd *` to the subagent allowlist in `~/.claude/settings.json`
+so subagent fix dispatch can run `bd update --claim` and friends
+without prompting.
+
+### Why CLI-only, not a plugin
+
+Default `bd init` (non-stealth) registers `SessionStart` and `PreCompact`
+Claude Code hooks that inject `bd prime` output. That output contains the
+directive *"Prohibited: Do NOT use TodoWrite, TaskCreate, or markdown
+files for task tracking"* — which would actively contradict the
+Superpowers + `.superpowers/` markdown workflow. Stealth mode skips the
+hook registration entirely. The `/mc:*` commands are the explicit
+load-state surface; hooks would be redundant.
+
 ## Why this shape works
 
 - **Divergent vs convergent split.** Brainstorm explores; review
