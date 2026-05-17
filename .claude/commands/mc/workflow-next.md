@@ -1,6 +1,6 @@
 ---
 description: Find your place in the Superpowers workflow and get the next 1–2 steps with model + effort
-argument-hint: <phase>
+argument-hint: [<phase>]
 ---
 
 Answer "what next?" by printing the matching phase block below. Phase
