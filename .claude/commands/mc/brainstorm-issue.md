@@ -8,13 +8,18 @@ You are driving GitHub issue **#$ARGUMENTS** in the current repo from brainstorm
 
 ## Beads integration (optional)
 
-If `bd status` exits 0 (beads is installed AND this worktree has `.beads/`),
-the command additionally records per-feature state in beads. Otherwise the
-command behaves exactly as documented below — no extra prompts, no banner.
+If `bd` is on PATH (beads is installed — `.beads/` does NOT need to exist
+yet; Step 5.5 will create it on first use), the command additionally
+records per-feature state in beads. Otherwise the command behaves exactly
+as documented below — no extra prompts, no banner.
+
+Unlike the read-side `/mc:*` commands (which require `.beads/` to already
+exist via `bd status`), this command is the *bootstrap* — it's the only
+command that ever runs `bd init`.
 
 Detection one-liner:
 
-    bd status >/dev/null 2>&1 || skip_beads=1
+    command -v bd >/dev/null 2>&1 || skip_beads=1
 
 Every `bd ...` invocation below is guarded by `[ -z "$skip_beads" ]`. A
 failure inside a guarded block **never** blocks the underlying workflow
@@ -77,7 +82,8 @@ Do **not** pass the full plan path — that produces a nested `.superpowers/revi
 
 ## Step 5.5 — Pin feature state in beads (optional)
 
-If `bd status` exits 0, pin per-feature state. Otherwise skip.
+If `bd` is on PATH (`command -v bd` exits 0), pin per-feature state.
+Otherwise skip.
 
 1. If `.beads/` is absent in the current worktree (test: `[ ! -d .beads ]`),
    run:
