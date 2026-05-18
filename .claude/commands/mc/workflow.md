@@ -20,7 +20,7 @@ Superpowers skills. Three sessions, three models, one PR.
 |-----------------|---------|--------|----------------|----------------------------------------------|
 | 1. Brainstorm + plan      | A         | Opus 4.7              | `max` (+ `ultrathink` on key turns)  | `/mc:brainstorm-issue <N>`                   |
 | 2. Execute + smoke test   | B (fresh) | Sonnet 4.6            | `high` ↓ `low`                       | `/mc:execute` (or `/superpowers:subagent-driven-development` for SDD plans) |
-| 3. PR review              | C (fresh) | Opus 4.7              | `xhigh` (or `max`)                   | `/mc:review-pr` (slug optional — resolved from feature bead) |
+| 3. PR review              | C (fresh) | Opus 4.7              | `xhigh` (or `max`)                   | `/mc:review` (slug optional — resolved from feature bead) |
 | 4. Apply fixes (review + manual testing) | C | Opus 4.7 → Sonnet 4.6 / Haiku 4.5 | dispatcher `xhigh`, typers vary | `/mc:fix <description>` (per approved/observed fix) |
 | 5. Verify + merge         | B (resumed) | Sonnet 4.6          | `low`                                | run tests, push, merge                       |
 
@@ -267,7 +267,7 @@ Start a *new* Opus session — fresh eyes, no Phase 1 brainstorm in
 context. Run:
 
 ```
-/mc:review-pr <slug>
+/mc:review <slug>
 ```
 
 The command reads three inputs:
@@ -290,7 +290,7 @@ Then it **stops** and asks which findings to apply. Nothing auto-fixes.
 **Effort:** `xhigh` is the calibrated default for Opus 4.7 coding work.
 For diffs that span many files, touch a security or migration surface,
 or carry a long `Replaced by:` list to verify, bump the session to
-`/effort max` before running `/mc:review-pr` and drop it back to
+`/effort max` before running `/mc:review` and drop it back to
 `xhigh` afterward. Each `Replaced by:` clause is a per-line
 verification check, so extra reasoning budget here directly raises
 catch-rate.
@@ -496,7 +496,7 @@ additionally pin per-feature state to bd:
   comment, transitions the feature `open → in_progress` at start, runs
   `/superpowers:executing-plans` inline, transitions
   `in_progress → awaiting_review` on a clean smoke pass.
-- `/mc:review-pr` looks up the feature bead by branch label (slug arg
+- `/mc:review` looks up the feature bead by branch label (slug arg
   optional), adds a `pr: #N` comment, and creates one child finding
   bead per review entry.
 - `/mc:fix` runs a four-state claim flow per finding (claim →
@@ -511,7 +511,7 @@ open  ──/mc:brainstorm-issue──▶  open        (plan / spec / note paths
                                   └──/mc:execute──▶  in_progress
                                                           │
                                                           └──plan complete + smoke clean──▶  awaiting_review  ↺
-                                                                                                    │      (PR + /mc:review-pr +
+                                                                                                    │      (PR + /mc:review +
                                                                                                     │       /mc:fix + re-smoke;
                                                                                                     │       bead stays here)
                                                                                                     │
@@ -525,7 +525,7 @@ review/fix progress; the feature bead is the coarse "is Phase 2 done?"
 gate.
 
 `/mc:execute` is the *only* command that transitions the feature
-bead's status. `/mc:review-pr` and `/mc:fix` operate on child finding
+bead's status. `/mc:review` and `/mc:fix` operate on child finding
 beads, never on the feature bead's status.
 
 In repos without `.beads/`, none of this fires — every `/mc:*` command

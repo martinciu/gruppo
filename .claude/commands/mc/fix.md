@@ -60,7 +60,7 @@ in-flight items rise to the top (`approved` → `in_progress` →
 
 Render as a compact table — three columns: bd ID, status, title. If
 no rows, say: "no open child findings for `<feature_id>` — run
-`/mc:review-pr` to generate some, or all approved findings have
+`/mc:review` to generate some, or all approved findings have
 already been dispatched and closed."
 
 Then **stop**. End with:
@@ -94,7 +94,7 @@ For each confirmed bd-ID:
       | jq -r '.[0] | "## \(.title)\n\n\(.description)"'
 
 The bead's `title` + `description` becomes the **primary brief** for
-that fix. Per `/mc:review-pr`'s self-containment contract, the
+that fix. Per `/mc:review`'s self-containment contract, the
 description carries `[drift]/[lens]` origin tag, `file:line`,
 Observed / Expected / Reproduction / Test rigor — everything the
 tier-picker in Step 1 needs. A fresh Claude session running
@@ -141,7 +141,7 @@ bd-ID, the bead description's first line carries `[drift]` or `[lens]`):
   span multiple files — lean toward Sonnet.
 
 The decision tree above still wins if the brief surfaces judgment
-beyond what the tag suggests. See `/mc:review-pr` § "Self-containment
+beyond what the tag suggests. See `/mc:review` § "Self-containment
 checklist" for where the tag is set.
 
 ## 2. The "needs judgment" branches
@@ -219,7 +219,7 @@ resolution paths, in priority order:
          | jq -r '.[0].parent_id')
 
 2. **Continuing Phase 3 session**: the dispatcher carries
-   `$feature_id` in context from `/mc:review-pr`'s child-bead
+   `$feature_id` in context from `/mc:review`'s child-bead
    creation.
 
 3. **Re-discover from branch label** (fallback when both above
