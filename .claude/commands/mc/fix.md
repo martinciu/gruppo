@@ -1,10 +1,23 @@
 ---
-description: Apply the described fix(es) by picking the right tier (Haiku / Sonnet / inline) — or surface that it needs a separate issue or brainstorm first
+description: Apply the described fix(es) by picking the right tier (Haiku / Sonnet / inline) — or, without arguments, list open child findings for the current feature bead
+argument-hint: [<description>]    # optional; without args, lists open findings
 ---
 
 Apply the following fix(es). Description:
 
 $ARGUMENTS
+
+## Mode
+
+`$ARGUMENTS` above is the user's input. Two behaviours:
+
+- **Non-empty** → **dispatch mode**. Walk Step 1's decision tree to
+  pick a tier for each fix in the description and dispatch.
+- **Empty AND `bd status` exits 0** → **list mode**. Run "List mode
+  (no arguments)" below to enumerate open child findings of the
+  current feature bead, then stop. Do not dispatch anything.
+- **Empty AND no bd** → stop and ask the user for a description.
+  See "When the description is ambiguous" at the bottom.
 
 ## Beads integration (optional)
 
@@ -19,6 +32,43 @@ Detection one-liner:
 Every `bd ...` invocation below is guarded by `[ -z "$skip_beads" ]`. A
 failure inside a guarded block **never** blocks the underlying workflow
 step — log the error, continue.
+
+## List mode (no arguments)
+
+Runs only when `$ARGUMENTS` is empty AND `bd status` exits 0. In any
+other case, skip this section and continue to Step 1.
+
+Resolve the feature bead by branch label:
+
+    branch=$(git symbolic-ref --short HEAD)
+    feature_id=$(bd list --label "branch:$branch" --type feature \
+      --json | jq -r '.[0].id // empty')
+
+If `$feature_id` is empty, stop and tell the user: no feature bead
+exists for the current branch — run `/mc:brainstorm-issue <N>` first.
+
+Otherwise enumerate every child finding not yet closed, sorted so
+in-flight items rise to the top (`approved` → `in_progress` →
+`awaiting_review` → `open`):
+
+    bd list --parent "$feature_id" \
+      --status open,approved,in_progress,awaiting_review --json \
+      | jq -r 'sort_by(
+          ({"approved":0,"in_progress":1,"awaiting_review":2,"open":3})[.status],
+          .id
+        ) | .[] | "\(.id)\t[\(.status)]\t\(.title)"'
+
+Render as a compact table — three columns: bd ID, status, title. If
+no rows, say: "no open child findings for `<feature_id>` — run
+`/mc:review-pr` to generate some, or all approved findings have
+already been dispatched and closed."
+
+Then **stop**. End with:
+
+> Re-invoke `/mc:fix <description>` to dispatch — copy a finding
+> title from the list above, or pass a bd ID directly (e.g.
+> `/mc:fix bd-abc123`). The dispatcher routes each fix through the
+> tier-picker (Haiku / Sonnet / inline) per Step 1.
 
 ## 1. Decide what to do with each fix
 
@@ -177,9 +227,16 @@ The user can interrupt before the calls return if a tier pick looks wrong.
 
 ## When the description is ambiguous
 
-If the description is too vague to even pick a tier (no file, no line, no
-clear target behaviour), stop and ask the user to clarify before doing
-anything. A vague brief produces vague code regardless of tier.
+Two separate cases:
+
+- **`$ARGUMENTS` is empty**: handled by the mode selector at the top.
+  In bd-active repos, list mode prints the open child findings and
+  stops. In bd-absent repos, stop here and ask the user for a fix
+  description.
+- **`$ARGUMENTS` is non-empty but too vague to pick a tier** (no file,
+  no line, no clear target behaviour): stop and ask the user to
+  clarify before doing anything. A vague brief produces vague code
+  regardless of tier.
 
 ## Why this command exists
 
