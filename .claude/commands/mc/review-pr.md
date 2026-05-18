@@ -152,6 +152,11 @@ child bead whose description is **self-contained** — a fresh
 to dispatch the fix from this description alone, without re-reading
 the plan, review-note, or this report.
 
+In the template below, lines beginning with `#` are model-only
+directives that gate the field beneath them. When the condition is
+false, **omit both the `#` line and the field line that follows**;
+do not include the `#` directives in the actual bd description.
+
     bd create \
       --parent "$feature_id" \
       --type bug \
@@ -163,10 +168,11 @@ the plan, review-note, or this report.
 Observed: <what we saw>
 Expected: <what the note or project lens prescribed>
 
-Reproduction: <if non-obvious>
+# Include only if the issue isn't obvious from reading the diff:
+Reproduction: <steps>
 
-Test rigor: <unit | integration | none — only if the review-note
-pinned this>
+# Include only if the review-note pinned a rigor expectation:
+Test rigor: <unit | integration>
 EOF
 )" --json | jq -r '.id'
 
