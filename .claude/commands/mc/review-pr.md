@@ -146,7 +146,11 @@ Produce a single review report with two sections:
 
 ## Pin findings as child beads (optional)
 
-If `bd status` exits 0, for each finding in the report:
+If `bd status` exits 0, for each finding in the report, create a
+child bead whose description is **self-contained** — a fresh
+`/mc:fix bd-XXXX` session in a separate Claude window must be able
+to dispatch the fix from this description alone, without re-reading
+the plan, review-note, or this report.
 
     bd create \
       --parent "$feature_id" \
@@ -154,12 +158,15 @@ If `bd status` exits 0, for each finding in the report:
       --priority P2 \
       "<severity emoji> <one-line finding title>" \
       --description "$(cat <<EOF
-file:line — <citation>
+[<origin tag — drift|lens>] file:line — <citation>
 
 Observed: <what we saw>
-Expected: <what the note prescribed>
+Expected: <what the note or project lens prescribed>
 
 Reproduction: <if non-obvious>
+
+Test rigor: <unit | integration | none — only if the review-note
+pinned this>
 EOF
 )" --json | jq -r '.id'
 
@@ -167,6 +174,31 @@ Print `bead bd-XXXX created` per finding as a footer.
 
 Children automatically inherit the feature's `branch:<name>` label
 (verified during pre-flight).
+
+### Self-containment checklist
+
+Before creating each bead, verify:
+
+- Severity emoji in title (🔴 / 🟡 / 🟢).
+- Origin tag (`[drift]` or `[lens]`) on the first line of the
+  description — `/mc:fix` reads this as a tier-picking signal
+  (`[lens]` findings are usually pattern-matching against project
+  style, leaning Sonnet; `[drift]` findings are often a single
+  concrete line, leaning Haiku).
+- `file:line` citation that resolves in the current diff.
+- Concrete `Observed` line (what's actually in the code right now).
+- Concrete `Expected` line (what should be there — exact bytes if
+  mechanical, behaviour description otherwise).
+- `Reproduction` only when the issue isn't obvious from reading the
+  diff (omit the field entirely if not needed; do not write
+  "Reproduction: N/A").
+- `Test rigor` only when the review-note pinned an expectation
+  (omit if not).
+- **No report-relative references** — do not write "finding #3" or
+  "see #5 above"; the numbers don't survive across sessions.
+- **No `.superpowers/` path citations** — those are gitignored and
+  the fresh /mc:fix session may not have them.
+- **No "as we discussed" references** — write out the substance.
 
 ## Stop here — wait for approval before any fix is applied
 

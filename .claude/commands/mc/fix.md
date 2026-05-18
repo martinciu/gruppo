@@ -70,6 +70,40 @@ Then **stop**. End with:
 > `/mc:fix bd-abc123`). The dispatcher routes each fix through the
 > tier-picker (Haiku / Sonnet / inline) per Step 1.
 
+## 0. Resolve `$ARGUMENTS` to a concrete brief
+
+Before walking Step 1's decision tree, normalise `$ARGUMENTS` into a
+brief the dispatcher can route.
+
+**bd-ID input (preferred path in bd-active repos):** if `$ARGUMENTS`
+contains one or more bd IDs (the project's bd uses prefix-suffix
+form — e.g. `bd-abc123`, `gruppo-xyz`; trust the bd ID format
+configured in this repo, don't hard-code `bd-` only) AND `bd status`
+exits 0, fetch each finding's full record:
+
+    bd show <id> --json \
+      | jq -r '.[0] | "## \(.title)\n\n\(.description)"'
+
+The bead's `title` + `description` becomes the **primary brief** for
+that fix. Per `/mc:review-pr`'s self-containment contract, the
+description carries `[drift]/[lens]` origin tag, `file:line`,
+Observed / Expected / Reproduction / Test rigor — everything the
+tier-picker in Step 1 needs. A fresh Claude session running
+`/mc:fix bd-XXXX` has no other context, and doesn't need it.
+
+Any free-text alongside the ID (e.g. `/mc:fix bd-abc123 also bump
+the version`) is *supplementary* — append to the brief, do not
+replace.
+
+**Free-text input:** if `$ARGUMENTS` has no bd ID, use it directly
+as the brief. Optionally substring-match against open child finding
+titles to identify the corresponding bead (used by §3a for the
+claim-flow). If no match, dispatch without a bead claim.
+
+**Multiple bd IDs in one invocation** (e.g. `/mc:fix bd-aaa bd-bbb`):
+treat each as a separate fix — Step 1 picks a tier per fix, §3 fans
+out one subagent per fix in parallel.
+
 ## 1. Decide what to do with each fix
 
 For each fix in the description, walk this decision tree before any code
@@ -130,17 +164,23 @@ When step 1 picked Haiku or Sonnet:
 2. Each subagent call uses:
    - `subagent_type: "general-purpose"`
    - `model: "haiku"` or `"sonnet"` per step 1
-   - A tight brief, ideally under ~500 tokens, containing:
-     - The file path and line(s) to change
-     - The exact change (or behavioural target, if the change is mechanical)
-     - What to leave alone — explicit "do not refactor / do not touch
-       unrelated code"
-     - Whether tests are expected and where (and whether the test
-       harness already exists)
-     - Working directory (use the current repo root unless told otherwise)
+   - A tight brief, ideally under ~500 tokens. Two assembly paths:
+     - **Resolved from a bead** (Step 0 bd-ID path): pass the bead's
+       `title + description` verbatim as the brief body. It already
+       carries `file:line`, Observed, Expected, Reproduction, and
+       (when set) Test rigor — that's exactly the subagent input
+       contract. Add only: "What to leave alone — do not refactor /
+       do not touch unrelated code" and "Working directory: <repo
+       root>".
+     - **Free-text input**: build the brief from `$ARGUMENTS` and
+       any context the dispatcher has. Include the file path /
+       line(s), exact change or behavioural target, what to leave
+       alone, test expectations if any, working directory.
 
 3. Do **not** dump the whole review report, plan, or review-focus note into
-   each subagent prompt. The subagent only needs the brief for *its* fix.
+   each subagent prompt. The subagent only needs the brief for *its* fix
+   — which is the bead's description (resolved path) or `$ARGUMENTS`
+   (free-text path), nothing else.
 
 4. When subagents return their diffs, you (the caller) read each diff,
    verify it matches intent, and stage/commit. Do not push.
