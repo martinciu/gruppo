@@ -39,13 +39,12 @@ Read the `plan:` comment from the feature bead:
       | jq -r '.[0].comments[] | .text | select(test("^plan: ")) | sub("^plan: "; "")')
 
 If `$plan_path` is empty, stop and tell the user: the feature bead has no
-`plan:` comment — either `/mc:brainstorm-issue` was run on an older version
-of the command (pre-plan-pinning) or the comment was deleted. Ask for the
-plan path explicitly.
+`plan:` comment — ask for the plan path explicitly.
 
-Verify the plan file exists on disk before transitioning state:
-
-    [ -f "$plan_path" ] || { echo "Plan file missing: $plan_path"; exit 1; }
+Verify the plan file exists on disk before transitioning state. If
+`$plan_path` doesn't resolve to a readable file, stop and tell the
+user — do **not** transition the bead, since the recorded state
+would then diverge from reality.
 
 ### Without beads (fallback)
 

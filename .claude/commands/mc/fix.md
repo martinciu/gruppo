@@ -76,10 +76,19 @@ Before walking Step 1's decision tree, normalise `$ARGUMENTS` into a
 brief the dispatcher can route.
 
 **bd-ID input (preferred path in bd-active repos):** if `$ARGUMENTS`
-contains one or more bd IDs (the project's bd uses prefix-suffix
-form — e.g. `bd-abc123`, `gruppo-xyz`; trust the bd ID format
-configured in this repo, don't hard-code `bd-` only) AND `bd status`
-exits 0, fetch each finding's full record:
+contains one or more bd IDs AND `bd status` exits 0, fetch each
+finding's full record.
+
+*Detecting bd IDs:* treat any whitespace-separated token matching
+`^[a-z]+-[a-z0-9]{3,}$` as a candidate. The prefix varies per repo
+(`bd-`, `gruppo-`, etc. — bd configures it at init time); the
+suffix is at least three alphanumeric chars. **Confirm each
+candidate with `bd show <token> --json` before treating it as a
+finding ID** — fail closed if `bd show` errors (the token was just
+a word that happened to match the shape, e.g. `mc-execute`,
+`api-v2`).
+
+For each confirmed bd-ID:
 
     bd show <id> --json \
       | jq -r '.[0] | "## \(.title)\n\n\(.description)"'
@@ -122,6 +131,18 @@ no judgment in what to do)?
 **Don't dispatch Opus to Opus.** If a brief needs Opus-tier reasoning to
 type the fix, you are Opus — don't round-trip through a subagent. Go to
 step 2 instead.
+
+**Tier-pick prior from the origin tag** (when Step 0 resolved from a
+bd-ID, the bead description's first line carries `[drift]` or `[lens]`):
+
+- `[drift]` findings usually have a concrete `file:line` and exact
+  `Expected:` value — lean toward Haiku.
+- `[lens]` findings usually pattern-match against project style or
+  span multiple files — lean toward Sonnet.
+
+The decision tree above still wins if the brief surfaces judgment
+beyond what the tag suggests. See `/mc:review-pr` § "Self-containment
+checklist" for where the tag is set.
 
 ## 2. The "needs judgment" branches
 
@@ -187,17 +208,33 @@ When step 1 picked Haiku or Sonnet:
 
 ## 3a. Beads claim flow (when `bd status` exits 0)
 
-For each fix being dispatched, identify the target finding bead. The
-dispatcher (the calling Opus session) carries the feature ID from
-`/mc:review-pr`'s context — or re-discovers it from the branch label if
-context was lost:
+The dispatcher needs `$feature_id` for child-finding claim ops. Three
+resolution paths, in priority order:
 
-    feature_id=$(bd list --label "branch:$(git symbolic-ref --short HEAD)" \
-      --type feature --json | jq -r '.[0].id')
+1. **Step 0 bd-ID path** (fresh-session-friendly): when `$ARGUMENTS`
+   resolved to one or more bd-IDs, derive `$feature_id` from any
+   child finding's `parent_id`:
 
-Then match the fix description to a child finding (best-effort —
-substring match against finding titles is sufficient; the user can
-always specify the finding ID explicitly in the fix description).
+       feature_id=$(bd show <first_finding_id> --json \
+         | jq -r '.[0].parent_id')
+
+2. **Continuing Phase 3 session**: the dispatcher carries
+   `$feature_id` in context from `/mc:review-pr`'s child-bead
+   creation.
+
+3. **Re-discover from branch label** (fallback when both above
+   fail — e.g. free-text dispatch without a Phase 3 predecessor):
+
+       feature_id=$(bd list --label "branch:$(git symbolic-ref --short HEAD)" \
+         --type feature --json | jq -r '.[0].id')
+
+Identifying the target finding bead per fix:
+
+- If path (1) — Step 0 — the bd-ID is already the finding ID; no
+  matching needed.
+- If path (2) or (3) — `$ARGUMENTS` was free-text — substring-match
+  the description against child finding titles (best-effort). If no
+  match, dispatch without a bead claim.
 
 ### Dispatcher actions (before Agent call)
 

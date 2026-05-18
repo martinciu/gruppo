@@ -489,7 +489,7 @@ When `.beads/` is initialised in the worktree, the `/mc:*` commands
 additionally pin per-feature state to bd:
 
 - `/mc:brainstorm-issue` creates a feature bead with `branch:<name>`
-  label and four comments: `github-issue:`, `slug:`, `spec:`, `plan:`,
+  label and five comments: `github-issue:`, `slug:`, `spec:`, `plan:`,
   `review-note:` (the last three pinning the artefact paths so
   downstream commands don't re-derive them from the slug).
 - `/mc:execute` resolves the plan from the feature bead's `plan:`
@@ -506,21 +506,23 @@ additionally pin per-feature state to bd:
 ### Feature-bead lifecycle
 
 ```
-open ──(brainstorm done)──▶ open                    (still — plan pinned, awaiting /mc:execute)
+open  ──/mc:brainstorm-issue──▶  open        (plan / spec / note paths pinned)
                                   │
-                                  └──/mc:execute───▶ in_progress
+                                  └──/mc:execute──▶  in_progress
                                                           │
-                                                          └──(plan complete + clean smoke)─▶ awaiting_review
-                                                                                                   │
-                                                                                                   ├──(PR opened, /mc:review-pr, fixes, smoke clean)
-                                                                                                   │
-                                                                                                   └──(merge, manual `bd close <fid>`)─▶ closed
+                                                          └──plan complete + smoke clean──▶  awaiting_review  ↺
+                                                                                                    │      (PR + /mc:review-pr +
+                                                                                                    │       /mc:fix + re-smoke;
+                                                                                                    │       bead stays here)
+                                                                                                    │
+                                                                                                    └──merge, manual `bd close <fid>`──▶  closed
 ```
 
-The feature bead stays `awaiting_review` through the entire Phase 3 →
-Phase 4 → re-smoke loop. Finding-level state (per-finding `claim →
-awaiting_review → close`) carries the granular review/fix progress;
-the feature bead is the coarse "is Phase 2 done?" gate.
+The `↺` marks the self-loop: the bead stays `awaiting_review` through
+the entire Phase 3 → Phase 4 → re-smoke cycle. Finding-level state
+(per-finding `claim → awaiting_review → close`) carries the granular
+review/fix progress; the feature bead is the coarse "is Phase 2 done?"
+gate.
 
 `/mc:execute` is the *only* command that transitions the feature
 bead's status. `/mc:review-pr` and `/mc:fix` operate on child finding
