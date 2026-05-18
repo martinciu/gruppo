@@ -85,14 +85,28 @@ Do **not** pass the full plan path — that produces a nested `.superpowers/revi
 If `bd` is on PATH (`command -v bd` exits 0), pin per-feature state.
 Otherwise skip.
 
-1. If `.beads/` is absent in the current worktree (test: `[ ! -d .beads ]`),
-   run:
+1. **Ensure bd has a reachable database.** Test with `bd status`, which
+   walks up from CWD looking for a `.beads/` (main repo, parent
+   worktree, anywhere up the tree). If reachable, skip init — bd is
+   already shared across worktrees per its default topology.
 
-       bd init --stealth --quiet --non-interactive
-       bd config set status.custom "awaiting_review"
+       if ! bd status >/dev/null 2>&1; then
+         bd init --stealth --quiet --non-interactive
+         bd config set status.custom "awaiting_review"
+       fi
 
-   `bd init --stealth` is destructive against existing `.beads/` (it
-   requires `--reinit-local`), so the directory check is load-bearing.
+   Why `bd status` and not `[ ! -d .beads ]`: in a worktree, the
+   local directory rarely has its own `.beads/` (the user-level
+   `[step.copy-ignored] exclude = [".beads/"]` keeps it out, and
+   `bd init --stealth` would abort against the parent's DB anyway
+   with "workspace already initialized"). The walk-up check is the
+   correct signal — bd is "ready" if any ancestor has been
+   initialized, regardless of where exactly.
+
+   The init branch fires only on the very first
+   `/mc:brainstorm-issue` run in a project (no `.beads/` anywhere up
+   the tree). Subsequent runs — same project, any worktree — skip
+   straight to step 2.
 
 2. Create the feature bead:
 
@@ -117,9 +131,14 @@ Otherwise skip.
 
        echo "bead $feature_id created"
 
-If any `bd` op fails inside this step, log a single warning and continue —
-the spec/plan/review-note are still on disk; beads is best-effort
-instrumentation.
+Failure handling: each sub-step is independent. If step 1's `bd init`
+fails unexpectedly (e.g., permissions, disk full), still attempt
+step 2 — `bd create` will tell you whether bd is actually usable. If
+step 2 fails (bd unreachable, schema error), log the error and skip
+step 3; the spec / plan / review-note remain on disk and the
+workflow continues. **Do not let one bd failure cascade into
+skipping the rest of step 5.5** — that loses the feature bead even
+when bd is otherwise healthy.
 
 ## Step 6 — Finish
 
