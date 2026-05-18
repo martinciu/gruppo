@@ -104,7 +104,7 @@ Otherwise skip.
    initialized, regardless of where exactly.
 
    The init branch fires only on the very first
-   `/mc:brainstorm-issue` run in a project (no `.beads/` anywhere up
+   `/mc:brainstorm` run in a project (no `.beads/` anywhere up
    the tree). Subsequent runs — same project, any worktree — skip
    straight to step 2.
 
