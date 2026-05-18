@@ -107,7 +107,7 @@ After the bead lands at `awaiting_review`, two manual steps:
     gh pr create --draft --title "<title>" --body "<body>"
 
     # Then in a fresh Opus session
-    /mc:review-pr        # slug arg is optional — resolved from bead
+    /mc:review        # slug arg is optional — resolved from bead
 
 Do not open the PR yourself from this command — Phase 2 owns the branch
 and the smoke test; the PR-open step is the natural seam between Phase 2
@@ -125,7 +125,7 @@ slug often diverge (e.g., branch `42-fix-auth` for slug
 Three reasons:
 
 1. **Single command per phase.** Phase 1 = `/mc:brainstorm-issue`, Phase
-   3 = `/mc:review-pr`, Phase 4 = `/mc:fix`. Phase 2 used to require the
+   3 = `/mc:review`, Phase 4 = `/mc:fix`. Phase 2 used to require the
    user to remember `/superpowers:executing-plans <slug>` and run the bd
    transitions manually. This closes the gap.
 2. **Bead transitions stay atomic with execution.** Forgetting to mark

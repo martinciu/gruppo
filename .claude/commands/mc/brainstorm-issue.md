@@ -123,7 +123,7 @@ Otherwise skip.
        bd comment "$feature_id" "plan: .superpowers/plans/<slug>.md"
        bd comment "$feature_id" "review-note: .superpowers/review-notes/<slug>.md"
 
-   The three artefact-path comments let `/mc:execute` and `/mc:review-pr`
+   The three artefact-path comments let `/mc:execute` and `/mc:review`
    resolve their inputs without re-parsing the slug. Substitute the
    actual slug; do not leave the literal `<slug>` token.
 

@@ -50,7 +50,7 @@ shipped with any plugin — symlink them manually if you want them:
 |--------------------------|-----------------------------------------------------------|
 | `/mc:brainstorm-issue`   | Drive a GitHub issue from brainstorm → spec → plan → review-note |
 | `/mc:execute`            | Resolve plan from the feature bead, transition `in_progress → awaiting_review`, run `executing-plans` inline |
-| `/mc:review-pr`          | Review a finished PR against its plan and review-focus note (slug arg optional — resolved from feature bead) |
+| `/mc:review`          | Review a finished PR against its plan and review-focus note (slug arg optional — resolved from feature bead) |
 | `/mc:fix`                | Apply fixes at the right model tier (Haiku / Sonnet / inline) |
 | `/mc:review-note`        | Distill brainstorm context into a one-page review-focus note |
 
