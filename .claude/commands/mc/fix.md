@@ -1,10 +1,23 @@
 ---
-description: Apply the described fix(es) by picking the right tier (Haiku / Sonnet / inline) — or surface that it needs a separate issue or brainstorm first
+description: Apply the described fix(es) by picking the right tier (Haiku / Sonnet / inline) — or, without arguments, list open child findings for the current feature bead
+argument-hint: [<description>]    # optional; without args, lists open findings
 ---
 
 Apply the following fix(es). Description:
 
 $ARGUMENTS
+
+## Mode
+
+`$ARGUMENTS` above is the user's input. Two behaviours:
+
+- **Non-empty** → **dispatch mode**. Walk Step 1's decision tree to
+  pick a tier for each fix in the description and dispatch.
+- **Empty AND `bd status` exits 0** → **list mode**. Run "List mode
+  (no arguments)" below to enumerate open child findings of the
+  current feature bead, then stop. Do not dispatch anything.
+- **Empty AND no bd** → stop and ask the user for a description.
+  See "When the description is ambiguous" at the bottom.
 
 ## Beads integration (optional)
 
@@ -19,6 +32,86 @@ Detection one-liner:
 Every `bd ...` invocation below is guarded by `[ -z "$skip_beads" ]`. A
 failure inside a guarded block **never** blocks the underlying workflow
 step — log the error, continue.
+
+## List mode (no arguments)
+
+Runs only when `$ARGUMENTS` is empty AND `bd status` exits 0. In any
+other case, skip this section and continue to Step 1.
+
+Resolve the feature bead by branch label:
+
+    branch=$(git symbolic-ref --short HEAD)
+    feature_id=$(bd list --label "branch:$branch" --type feature \
+      --json | jq -r '.[0].id // empty')
+
+If `$feature_id` is empty, stop and tell the user: no feature bead
+exists for the current branch — run `/mc:brainstorm-issue <N>` first.
+
+Otherwise enumerate every child finding not yet closed, sorted so
+in-flight items rise to the top (`approved` → `in_progress` →
+`awaiting_review` → `open`):
+
+    bd list --parent "$feature_id" \
+      --status open,approved,in_progress,awaiting_review --json \
+      | jq -r 'sort_by(
+          ({"approved":0,"in_progress":1,"awaiting_review":2,"open":3})[.status],
+          .id
+        ) | .[] | "\(.id)\t[\(.status)]\t\(.title)"'
+
+Render as a compact table — three columns: bd ID, status, title. If
+no rows, say: "no open child findings for `<feature_id>` — run
+`/mc:review-pr` to generate some, or all approved findings have
+already been dispatched and closed."
+
+Then **stop**. End with:
+
+> Re-invoke `/mc:fix <description>` to dispatch — copy a finding
+> title from the list above, or pass a bd ID directly (e.g.
+> `/mc:fix bd-abc123`). The dispatcher routes each fix through the
+> tier-picker (Haiku / Sonnet / inline) per Step 1.
+
+## 0. Resolve `$ARGUMENTS` to a concrete brief
+
+Before walking Step 1's decision tree, normalise `$ARGUMENTS` into a
+brief the dispatcher can route.
+
+**bd-ID input (preferred path in bd-active repos):** if `$ARGUMENTS`
+contains one or more bd IDs AND `bd status` exits 0, fetch each
+finding's full record.
+
+*Detecting bd IDs:* treat any whitespace-separated token matching
+`^[a-z]+-[a-z0-9]{3,}$` as a candidate. The prefix varies per repo
+(`bd-`, `gruppo-`, etc. — bd configures it at init time); the
+suffix is at least three alphanumeric chars. **Confirm each
+candidate with `bd show <token> --json` before treating it as a
+finding ID** — fail closed if `bd show` errors (the token was just
+a word that happened to match the shape, e.g. `mc-execute`,
+`api-v2`).
+
+For each confirmed bd-ID:
+
+    bd show <id> --json \
+      | jq -r '.[0] | "## \(.title)\n\n\(.description)"'
+
+The bead's `title` + `description` becomes the **primary brief** for
+that fix. Per `/mc:review-pr`'s self-containment contract, the
+description carries `[drift]/[lens]` origin tag, `file:line`,
+Observed / Expected / Reproduction / Test rigor — everything the
+tier-picker in Step 1 needs. A fresh Claude session running
+`/mc:fix bd-XXXX` has no other context, and doesn't need it.
+
+Any free-text alongside the ID (e.g. `/mc:fix bd-abc123 also bump
+the version`) is *supplementary* — append to the brief, do not
+replace.
+
+**Free-text input:** if `$ARGUMENTS` has no bd ID, use it directly
+as the brief. Optionally substring-match against open child finding
+titles to identify the corresponding bead (used by §3a for the
+claim-flow). If no match, dispatch without a bead claim.
+
+**Multiple bd IDs in one invocation** (e.g. `/mc:fix bd-aaa bd-bbb`):
+treat each as a separate fix — Step 1 picks a tier per fix, §3 fans
+out one subagent per fix in parallel.
 
 ## 1. Decide what to do with each fix
 
@@ -38,6 +131,18 @@ no judgment in what to do)?
 **Don't dispatch Opus to Opus.** If a brief needs Opus-tier reasoning to
 type the fix, you are Opus — don't round-trip through a subagent. Go to
 step 2 instead.
+
+**Tier-pick prior from the origin tag** (when Step 0 resolved from a
+bd-ID, the bead description's first line carries `[drift]` or `[lens]`):
+
+- `[drift]` findings usually have a concrete `file:line` and exact
+  `Expected:` value — lean toward Haiku.
+- `[lens]` findings usually pattern-match against project style or
+  span multiple files — lean toward Sonnet.
+
+The decision tree above still wins if the brief surfaces judgment
+beyond what the tag suggests. See `/mc:review-pr` § "Self-containment
+checklist" for where the tag is set.
 
 ## 2. The "needs judgment" branches
 
@@ -80,34 +185,56 @@ When step 1 picked Haiku or Sonnet:
 2. Each subagent call uses:
    - `subagent_type: "general-purpose"`
    - `model: "haiku"` or `"sonnet"` per step 1
-   - A tight brief, ideally under ~500 tokens, containing:
-     - The file path and line(s) to change
-     - The exact change (or behavioural target, if the change is mechanical)
-     - What to leave alone — explicit "do not refactor / do not touch
-       unrelated code"
-     - Whether tests are expected and where (and whether the test
-       harness already exists)
-     - Working directory (use the current repo root unless told otherwise)
+   - A tight brief, ideally under ~500 tokens. Two assembly paths:
+     - **Resolved from a bead** (Step 0 bd-ID path): pass the bead's
+       `title + description` verbatim as the brief body. It already
+       carries `file:line`, Observed, Expected, Reproduction, and
+       (when set) Test rigor — that's exactly the subagent input
+       contract. Add only: "What to leave alone — do not refactor /
+       do not touch unrelated code" and "Working directory: <repo
+       root>".
+     - **Free-text input**: build the brief from `$ARGUMENTS` and
+       any context the dispatcher has. Include the file path /
+       line(s), exact change or behavioural target, what to leave
+       alone, test expectations if any, working directory.
 
 3. Do **not** dump the whole review report, plan, or review-focus note into
-   each subagent prompt. The subagent only needs the brief for *its* fix.
+   each subagent prompt. The subagent only needs the brief for *its* fix
+   — which is the bead's description (resolved path) or `$ARGUMENTS`
+   (free-text path), nothing else.
 
 4. When subagents return their diffs, you (the caller) read each diff,
    verify it matches intent, and stage/commit. Do not push.
 
 ## 3a. Beads claim flow (when `bd status` exits 0)
 
-For each fix being dispatched, identify the target finding bead. The
-dispatcher (the calling Opus session) carries the feature ID from
-`/mc:review-pr`'s context — or re-discovers it from the branch label if
-context was lost:
+The dispatcher needs `$feature_id` for child-finding claim ops. Three
+resolution paths, in priority order:
 
-    feature_id=$(bd list --label "branch:$(git symbolic-ref --short HEAD)" \
-      --type feature --json | jq -r '.[0].id')
+1. **Step 0 bd-ID path** (fresh-session-friendly): when `$ARGUMENTS`
+   resolved to one or more bd-IDs, derive `$feature_id` from any
+   child finding's `parent_id`:
 
-Then match the fix description to a child finding (best-effort —
-substring match against finding titles is sufficient; the user can
-always specify the finding ID explicitly in the fix description).
+       feature_id=$(bd show <first_finding_id> --json \
+         | jq -r '.[0].parent_id')
+
+2. **Continuing Phase 3 session**: the dispatcher carries
+   `$feature_id` in context from `/mc:review-pr`'s child-bead
+   creation.
+
+3. **Re-discover from branch label** (fallback when both above
+   fail — e.g. free-text dispatch without a Phase 3 predecessor):
+
+       feature_id=$(bd list --label "branch:$(git symbolic-ref --short HEAD)" \
+         --type feature --json | jq -r '.[0].id')
+
+Identifying the target finding bead per fix:
+
+- If path (1) — Step 0 — the bd-ID is already the finding ID; no
+  matching needed.
+- If path (2) or (3) — `$ARGUMENTS` was free-text — substring-match
+  the description against child finding titles (best-effort). If no
+  match, dispatch without a bead claim.
 
 ### Dispatcher actions (before Agent call)
 
@@ -177,9 +304,16 @@ The user can interrupt before the calls return if a tier pick looks wrong.
 
 ## When the description is ambiguous
 
-If the description is too vague to even pick a tier (no file, no line, no
-clear target behaviour), stop and ask the user to clarify before doing
-anything. A vague brief produces vague code regardless of tier.
+Two separate cases:
+
+- **`$ARGUMENTS` is empty**: handled by the mode selector at the top.
+  In bd-active repos, list mode prints the open child findings and
+  stops. In bd-absent repos, stop here and ask the user for a fix
+  description.
+- **`$ARGUMENTS` is non-empty but too vague to pick a tier** (no file,
+  no line, no clear target behaviour): stop and ask the user to
+  clarify before doing anything. A vague brief produces vague code
+  regardless of tier.
 
 ## Why this command exists
 
