@@ -6,6 +6,20 @@ Apply the following fix(es). Description:
 
 $ARGUMENTS
 
+## Beads integration (optional)
+
+If `bd status` exits 0 (beads is installed AND this worktree has `.beads/`),
+the command additionally records per-feature state in beads. Otherwise the
+command behaves exactly as documented below — no extra prompts, no banner.
+
+Detection one-liner:
+
+    bd status >/dev/null 2>&1 || skip_beads=1
+
+Every `bd ...` invocation below is guarded by `[ -z "$skip_beads" ]`. A
+failure inside a guarded block **never** blocks the underlying workflow
+step — log the error, continue.
+
 ## 1. Decide what to do with each fix
 
 For each fix in the description, walk this decision tree before any code
@@ -81,6 +95,73 @@ When step 1 picked Haiku or Sonnet:
 4. When subagents return their diffs, you (the caller) read each diff,
    verify it matches intent, and stage/commit. Do not push.
 
+## 3a. Beads claim flow (when `bd status` exits 0)
+
+For each fix being dispatched, identify the target finding bead. The
+dispatcher (the calling Opus session) carries the feature ID from
+`/mc:review-pr`'s context — or re-discovers it from the branch label if
+context was lost:
+
+    feature_id=$(bd list --label "branch:$(git symbolic-ref --short HEAD)" \
+      --type feature --json | jq -r '.[0].id')
+
+Then match the fix description to a child finding (best-effort —
+substring match against finding titles is sufficient; the user can
+always specify the finding ID explicitly in the fix description).
+
+### Dispatcher actions (before Agent call)
+
+Set `BEADS_ACTOR` in the subagent environment when invoking the Agent
+tool. The tool's `env` parameter accepts a map; pass:
+
+    BEADS_ACTOR=haiku-subagent   # for Haiku 4.5
+    BEADS_ACTOR=sonnet-subagent  # for Sonnet 4.6
+
+(If the Agent tool does not expose env passthrough, the dispatcher
+explicitly threads `BEADS_ACTOR=<name>` as a leading clause in every
+`bd` invocation inside the subagent's prompt, e.g.:
+`BEADS_ACTOR=haiku-subagent bd update <id> --claim`.)
+
+### Subagent prompt — add a beads block at the end
+
+Append this block to the subagent's brief, byte-exact:
+
+    ## Beads coordination
+
+    The finding you are fixing is bead `<finding_id>`.
+
+    Before starting:
+
+        bd update <finding_id> --claim
+
+    After producing the diff (do not commit — return the diff to the
+    caller), set:
+
+        bd update <finding_id> --status=awaiting_review
+        bd comment <finding_id> "<one-line summary of the fix you typed>"
+
+    If `bd status` exits non-zero (no beads in worktree), skip the bd
+    ops above. The diff is the only required output.
+
+### Dispatcher actions (after subagent returns)
+
+When the subagent returns its diff:
+
+1. Read the diff and verify intent (existing behaviour).
+2. Stage and commit (existing behaviour).
+3. Close the finding bead:
+
+       bd close <finding_id> -r "fixed in <commit-sha>"
+
+4. Print: `bead <finding_id> closed`.
+
+### Parallel dispatch (existing §3 fans out N subagents)
+
+Each subagent claims its own finding independently. The dispatcher
+iterates the awaiting-review queue as completions return:
+
+    bd list --parent "$feature_id" --status awaiting_review --json
+
 ## 4. Announcing the dispatch
 
 Before kicking off subagent calls, print a one-line summary per fix so the
@@ -88,6 +169,9 @@ caller can see your tier picks:
 
 > Dispatching: 3 fixes → 2× Haiku (mechanical), 1× Sonnet (multi-file).
 > 1 fix kept inline (in-scope decision: <one-line rationale>).
+
+If beads is active, the dispatch announcement also lists the finding IDs
+being claimed.
 
 The user can interrupt before the calls return if a tier pick looks wrong.
 

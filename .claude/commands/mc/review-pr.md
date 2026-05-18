@@ -1,8 +1,35 @@
 ---
 description: Review the PR for a finished plan using its review-focus note. Stops after the report — does not auto-apply fixes
+argument-hint: [<slug>]
 ---
 
-Review the PR for slug `$ARGUMENTS`. Read these three inputs in order:
+## Beads integration (optional)
+
+If `bd status` exits 0 (beads is installed AND this worktree has `.beads/`),
+the command additionally records per-feature state in beads. Otherwise the
+command behaves exactly as documented below — no extra prompts, no banner.
+
+Detection one-liner:
+
+    bd status >/dev/null 2>&1 || skip_beads=1
+
+Every `bd ...` invocation below is guarded by `[ -z "$skip_beads" ]`. A
+failure inside a guarded block **never** blocks the underlying workflow
+step — log the error, continue.
+
+Review the PR for slug `$ARGUMENTS`. If `$ARGUMENTS` is empty and
+`bd status` exits 0, derive the slug from the active feature bead:
+
+    branch=$(git symbolic-ref --short HEAD)
+    feature_id=$(bd list --label "branch:$branch" --type feature \
+      --json | jq -r '.[0].id')
+    slug=$(bd show "$feature_id" --json \
+      | jq -r '.[0].comments[] | .text | select(test("^slug: ")) | sub("^slug: "; "")')
+
+If neither `$ARGUMENTS` nor a feature bead resolves a slug, stop and ask
+the user for one. Do not fall back silently.
+
+Read these three inputs in order:
 
 1. `.superpowers/plans/$ARGUMENTS.md` — the plan (what we said we'd do).
 2. `.superpowers/review-notes/$ARGUMENTS.md` — the review-focus note (deliberation
@@ -13,6 +40,18 @@ Review the PR for slug `$ARGUMENTS`. Read these three inputs in order:
 
 If any of the three inputs is missing, stop and tell me which one — don't proceed
 on partial context.
+
+## Pin PR number to the feature bead (optional)
+
+If `bd status` exits 0, record the PR number on the feature bead. The
+idempotency check avoids duplicate `pr:` comments on re-invocations.
+
+    pr_number=$(gh pr view --json number -q .number)
+    if ! bd show "$feature_id" --json \
+         | jq -e --arg pr "pr: #$pr_number" \
+           '.[0].comments[] | select(.text == $pr)' >/dev/null; then
+      bd comment "$feature_id" "pr: #$pr_number"
+    fi
 
 ## Review focus
 
@@ -82,6 +121,30 @@ Produce a single review report with two sections:
    finding doesn't appear in any, the user will infer "apply, no grouping,
    no follow-up needed" — which is fine for the common case.
 
+## Pin findings as child beads (optional)
+
+If `bd status` exits 0, for each finding in the report:
+
+    bd create \
+      --parent "$feature_id" \
+      --type bug \
+      --priority P2 \
+      "<severity emoji> <one-line finding title>" \
+      --description "$(cat <<EOF
+file:line — <citation>
+
+Observed: <what we saw>
+Expected: <what the note prescribed>
+
+Reproduction: <if non-obvious>
+EOF
+)" --json | jq -r '.id'
+
+Print `bead bd-XXXX created` per finding as a footer.
+
+Children automatically inherit the feature's `branch:<name>` label
+(verified during pre-flight).
+
 ## Stop here — wait for approval before any fix is applied
 
 After producing the report, **stop**. Do not dispatch any subagents. Do not
@@ -105,6 +168,26 @@ fix; `/mc:fix` picks the right typing tier (Haiku for mechanical, Sonnet
 for judgment-laden, or inline when the fix needs Opus reasoning). Spending
 Opus tokens on the typing is quota wasted at roughly 5× Sonnet and 25×
 Haiku rates.
+
+## Transition finding beads on user reply (optional)
+
+If `bd status` exits 0, mirror the user's approval decision onto the
+finding beads created above:
+
+- **User approves a subset** (e.g. "1, 3, 5", "1-4", "accept
+  recommendations"): for each approved finding bead, run
+
+      bd update "$fid" --status=approved
+
+  before dispatching `/mc:fix`.
+
+- **User replies `issue: 6, 8`** to defer findings to GitHub: after
+  `gh issue create` for each, close the bead with the new issue ref:
+
+      bd close "$fid" -r "deferred to gh#$new_issue_number"
+
+- **User replies `none`**: no transitions. Leave the finding beads at
+  `open` so a future re-invocation can re-surface them.
 
 ## What to skip
 

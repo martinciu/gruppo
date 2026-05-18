@@ -6,6 +6,25 @@ model: claude-opus-4-7
 
 You are driving GitHub issue **#$ARGUMENTS** in the current repo from brainstorm all the way to a saved plan and review-note. Do not stop after the spec — continue through `superpowers:writing-plans` and `/mc:review-note`, and finish only once all three artifacts (spec, plan, review-note) are on disk.
 
+## Beads integration (optional)
+
+If `bd` is on PATH (beads is installed — `.beads/` does NOT need to exist
+yet; Step 5.5 will create it on first use), the command additionally
+records per-feature state in beads. Otherwise the command behaves exactly
+as documented below — no extra prompts, no banner.
+
+Unlike the read-side `/mc:*` commands (which require `.beads/` to already
+exist via `bd status`), this command is the *bootstrap* — it's the only
+command that ever runs `bd init`.
+
+Detection one-liner:
+
+    command -v bd >/dev/null 2>&1 || skip_beads=1
+
+Every `bd ...` invocation below is guarded by `[ -z "$skip_beads" ]`. A
+failure inside a guarded block **never** blocks the underlying workflow
+step — log the error, continue.
+
 ## Step 1 — Fetch the issue
 
 Run:
@@ -60,6 +79,40 @@ Once the plan file has been written and saved (confirm on disk before continuing
 Do **not** pass the full plan path — that produces a nested `.superpowers/review-notes/.superpowers/plans/<file>.md.md` directory mess.
 
 `/mc:review-note` handles frontmatter on its own — do not post-process the generated note to add `spec:` or `plan:` pointers (that contradicts the command's distillation rule).
+
+## Step 5.5 — Pin feature state in beads (optional)
+
+If `bd` is on PATH (`command -v bd` exits 0), pin per-feature state.
+Otherwise skip.
+
+1. If `.beads/` is absent in the current worktree (test: `[ ! -d .beads ]`),
+   run:
+
+       bd init --stealth --quiet --non-interactive
+       bd config set status.custom "awaiting_review"
+
+   `bd init --stealth` is destructive against existing `.beads/` (it
+   requires `--reinit-local`), so the directory check is load-bearing.
+
+2. Create the feature bead:
+
+       branch=$(git symbolic-ref --short HEAD)
+       feature_id=$(bd create \
+         --type feature \
+         --priority P1 \
+         --labels "branch:$branch" \
+         "<gh issue title>" \
+         --json | jq -r '.id')
+       bd comment "$feature_id" "github-issue: #$ARGUMENTS"
+       bd comment "$feature_id" "slug: <slug>"
+
+3. Print a one-line footer ack:
+
+       echo "bead $feature_id created"
+
+If any `bd` op fails inside this step, log a single warning and continue —
+the spec/plan/review-note are still on disk; beads is best-effort
+instrumentation.
 
 ## Step 6 — Finish
 

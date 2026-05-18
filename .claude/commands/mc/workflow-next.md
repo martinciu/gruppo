@@ -1,13 +1,58 @@
 ---
 description: Find your place in the Superpowers workflow and get the next 1–2 steps with model + effort
-argument-hint: <phase>
+argument-hint: [<phase>]
 ---
 
 Answer "what next?" by printing the matching phase block below. Phase
 summaries are inlined — no file Read needed. The full reference lives
 in `/mc:workflow`; this command is the slim navigator.
 
+## Beads integration (optional)
+
+If `bd status` exits 0 (beads is installed AND this worktree has `.beads/`),
+the command additionally records per-feature state in beads. Otherwise the
+command behaves exactly as documented below — no extra prompts, no banner.
+
+Detection one-liner:
+
+    bd status >/dev/null 2>&1 || skip_beads=1
+
+Every `bd ...` invocation below is guarded by `[ -z "$skip_beads" ]`. A
+failure inside a guarded block **never** blocks the underlying workflow
+step — log the error, continue.
+
 ## Steps
+
+0. **Optional beads-driven phase inference.**
+
+   If `bd status` exits 0 AND `$ARGUMENTS` is empty:
+
+       branch=$(git symbolic-ref --short HEAD)
+       feature_id=$(bd list --label "branch:$branch" --type feature \
+         --json | jq -r '.[0].id // empty')
+
+   If `$feature_id` resolved:
+
+       has_pr=$(bd show "$feature_id" --json \
+         | jq -r '[.[0].comments[] | .text | select(test("^pr: "))] | length')
+       outstanding=$(bd list --parent "$feature_id" \
+         --status open,approved,in_progress,awaiting_review \
+         --json | jq 'length')
+
+   Decision tree:
+
+   - No `pr:` comment yet, no outstanding findings → Phase 2.
+   - `pr:` comment present, no outstanding findings → Phase 5.
+   - `pr:` comment present, outstanding findings with status `open`
+     only → Phase 3.
+   - `pr:` comment present, any finding `approved` or `in_progress`
+     or `awaiting_review` → Phase 4.
+   - No `pr:` comment, no feature bead → fall through to the existing
+     picker.
+
+   Print the inferred phase as `Inferred phase from beads: N` then
+   continue to step 1 with that phase as if it had been passed in
+   `$ARGUMENTS`.
 
 1. **Resolve the phase from `$ARGUMENTS`.** Match leniently:
    - `1` / `brainstorm` / `plan` / `spec` → Phase 1
@@ -18,7 +63,8 @@ in `/mc:workflow`; this command is the slim navigator.
    - `0` / `fresh` / `start` / `new` → Phase 1
    - empty or unrecognised → step 2
 
-2. **Picker** (only when step 1 yields no phase). Ask:
+2. **Picker** (only when step 1 yields no phase). If beads inferred a
+   phase in step 0, the picker is skipped. Ask:
 
    ```
    Which phase are you on?

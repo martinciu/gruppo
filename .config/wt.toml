@@ -1,0 +1,15 @@
+# Worktrunk project config — shared with all developers via git.
+# See: https://worktrunk.dev/reference/hook
+
+# When a worktree is removed, clean up its local beads database so the
+# next checkout of the same branch starts fresh. .beads/ is gitignored
+# (via .git/info/exclude set by `bd init --stealth`), so nothing needs
+# committing — this is pure local cleanup.
+[pre-remove]
+beads = "[ -d .beads ] && rm -rf .beads || true"
+
+# wt step copy-ignored honours .git/info/exclude, so .beads/ would
+# otherwise be propagated between worktrees on post-start. Keep each
+# worktree's beads db isolated.
+[[copy-ignored.exclude]]
+path = ".beads"
