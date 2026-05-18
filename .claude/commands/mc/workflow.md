@@ -5,8 +5,7 @@ description: End-to-end Superpowers workflow — brainstorm → execute → revi
 > **When invoked as `/mc:workflow`:** print the reference below
 > verbatim. Do not summarise, do not act on it, do not ask follow-up
 > questions. The user is pulling the doc into their session as a
-> quick-reference card. For a per-phase "what should I do next"
-> summary instead, the user wants `/mc:workflow-next`.
+> quick-reference card.
 
 ---
 
@@ -20,8 +19,8 @@ Superpowers skills. Three sessions, three models, one PR.
 | Phase           | Session | Model  | Effort         | Driver                                       |
 |-----------------|---------|--------|----------------|----------------------------------------------|
 | 1. Brainstorm + plan      | A         | Opus 4.7              | `max` (+ `ultrathink` on key turns)  | `/mc:brainstorm-issue <N>`                   |
-| 2. Execute + smoke test   | B (fresh) | Sonnet 4.6            | `high` ↓ `low`                       | `/superpowers:executing-plans` or `…:subagent-driven-development` |
-| 3. PR review              | C (fresh) | Opus 4.7              | `xhigh` (or `max`)                   | `/mc:review-pr <slug>`                       |
+| 2. Execute + smoke test   | B (fresh) | Sonnet 4.6            | `high` ↓ `low`                       | `/mc:execute` (or `/superpowers:subagent-driven-development` for SDD plans) |
+| 3. PR review              | C (fresh) | Opus 4.7              | `xhigh` (or `max`)                   | `/mc:review-pr` (slug optional — resolved from feature bead) |
 | 4. Apply fixes (review + manual testing) | C | Opus 4.7 → Sonnet 4.6 / Haiku 4.5 | dispatcher `xhigh`, typers vary | `/mc:fix <description>` (per approved/observed fix) |
 | 5. Verify + merge         | B (resumed) | Sonnet 4.6          | `low`                                | run tests, push, merge                       |
 
@@ -172,23 +171,36 @@ selection) for a per-turn boost on top of the session level.
 `medium` for mechanical runs**
 
 Start a *new* Sonnet session (`claude --model sonnet`, or model-picker).
-Paste the command printed by Phase 1:
+For inline execution (the common case), paste:
 
 ```
-/superpowers:executing-plans .superpowers/plans/<slug>.md
+/mc:execute
 ```
 
-…or, if SDD was recommended:
+`/mc:execute` resolves the plan path from the feature bead (created by
+`/mc:brainstorm-issue` in Phase 1, with the plan path pinned as a
+comment), transitions the bead `open → in_progress`, runs
+`/superpowers:executing-plans` inline, and transitions
+`in_progress → awaiting_review` on a clean smoke pass. In repos
+without `.beads/`, it falls back to asking for the plan path
+explicitly. The slug argument is never needed — the wrapper figures
+out what to run from the current branch.
+
+…or, if SDD was recommended in Phase 1:
 
 ```
 /superpowers:subagent-driven-development .superpowers/plans/<slug>.md
 ```
 
+SDD intentionally bypasses `/mc:execute` because its per-task
+two-stage review carries its own status discipline; wrapping it would
+duplicate the gating.
+
 ### Inline vs SDD — pick once, in Phase 1
 
-- **Inline** (`executing-plans`) — most tasks are mechanical/byte-exact
-  (config, dotfiles, TOML/YAML/HTML fragments, cheatsheets). Skips
-  per-task review token overhead.
+- **Inline** (`/mc:execute` → `executing-plans`) — most tasks are
+  mechanical/byte-exact (config, dotfiles, TOML/YAML/HTML fragments,
+  cheatsheets). Skips per-task review token overhead.
 - **SDD** (`subagent-driven-development`) — most tasks are real code
   with logic and judgment (~50–300 LOC/task, multi-file integration).
   Two-stage review (spec compliance, then code quality) earns its cost.
@@ -477,15 +489,42 @@ When `.beads/` is initialised in the worktree, the `/mc:*` commands
 additionally pin per-feature state to bd:
 
 - `/mc:brainstorm-issue` creates a feature bead with `branch:<name>`
-  label and `github-issue:` / `slug:` comments.
-- `/mc:review-pr` adds a `pr: #N` comment and creates one child finding
-  bead per review entry. Argument `<slug>` becomes optional — looked up
-  by branch label.
+  label and four comments: `github-issue:`, `slug:`, `spec:`, `plan:`,
+  `review-note:` (the last three pinning the artefact paths so
+  downstream commands don't re-derive them from the slug).
+- `/mc:execute` resolves the plan from the feature bead's `plan:`
+  comment, transitions the feature `open → in_progress` at start, runs
+  `/superpowers:executing-plans` inline, transitions
+  `in_progress → awaiting_review` on a clean smoke pass.
+- `/mc:review-pr` looks up the feature bead by branch label (slug arg
+  optional), adds a `pr: #N` comment, and creates one child finding
+  bead per review entry.
 - `/mc:fix` runs a four-state claim flow per finding (claim →
   awaiting_review → close) with `BEADS_ACTOR` distinguishing the
   subagent from the controller in `bd history`.
-- `/mc:workflow-next` infers the current phase from the feature bead's
-  comments and the status of its child findings.
+
+### Feature-bead lifecycle
+
+```
+open ──(brainstorm done)──▶ open                    (still — plan pinned, awaiting /mc:execute)
+                                  │
+                                  └──/mc:execute───▶ in_progress
+                                                          │
+                                                          └──(plan complete + clean smoke)─▶ awaiting_review
+                                                                                                   │
+                                                                                                   ├──(PR opened, /mc:review-pr, fixes, smoke clean)
+                                                                                                   │
+                                                                                                   └──(merge, manual `bd close <fid>`)─▶ closed
+```
+
+The feature bead stays `awaiting_review` through the entire Phase 3 →
+Phase 4 → re-smoke loop. Finding-level state (per-finding `claim →
+awaiting_review → close`) carries the granular review/fix progress;
+the feature bead is the coarse "is Phase 2 done?" gate.
+
+`/mc:execute` is the *only* command that transitions the feature
+bead's status. `/mc:review-pr` and `/mc:fix` operate on child finding
+beads, never on the feature bead's status.
 
 In repos without `.beads/`, none of this fires — every `/mc:*` command
 behaves exactly as documented above.

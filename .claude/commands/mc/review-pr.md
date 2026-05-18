@@ -1,6 +1,6 @@
 ---
 description: Review the PR for a finished plan using its review-focus note. Stops after the report — does not auto-apply fixes
-argument-hint: [<slug>]
+argument-hint: [<slug>]    # optional; resolved from the feature bead by default
 ---
 
 ## Beads integration (optional)
@@ -17,29 +17,52 @@ Every `bd ...` invocation below is guarded by `[ -z "$skip_beads" ]`. A
 failure inside a guarded block **never** blocks the underlying workflow
 step — log the error, continue.
 
-Review the PR for slug `$ARGUMENTS`. If `$ARGUMENTS` is empty and
-`bd status` exits 0, derive the slug from the active feature bead:
+## Step 0 — Resolve the feature, slug, and input paths
+
+With beads (default — `bd status` exits 0): always look up the feature
+bead by branch label. It carries the slug and the artefact paths as
+comments — pinned by `/mc:brainstorm-issue` at creation time.
 
     branch=$(git symbolic-ref --short HEAD)
     feature_id=$(bd list --label "branch:$branch" --type feature \
-      --json | jq -r '.[0].id')
+      --json | jq -r '.[0].id // empty')
+
+If `$feature_id` resolved, read the pinned paths:
+
     slug=$(bd show "$feature_id" --json \
       | jq -r '.[0].comments[] | .text | select(test("^slug: ")) | sub("^slug: "; "")')
+    plan_path=$(bd show "$feature_id" --json \
+      | jq -r '.[0].comments[] | .text | select(test("^plan: ")) | sub("^plan: "; "")')
+    note_path=$(bd show "$feature_id" --json \
+      | jq -r '.[0].comments[] | .text | select(test("^review-note: ")) | sub("^review-note: "; "")')
 
-If neither `$ARGUMENTS` nor a feature bead resolves a slug, stop and ask
-the user for one. Do not fall back silently.
+`$ARGUMENTS`, if non-empty, **overrides** the slug from the bead (use
+when reviewing a different feature than the current branch suggests).
+When `$ARGUMENTS` is set, derive the paths from the slug rather than
+the bead's pinned comments — the user is asking for a different feature.
 
-Read these three inputs in order:
+**Status check:** the feature bead is expected to be `awaiting_review`
+here (`/mc:execute` transitions it on plan completion). If it's still
+`in_progress`, warn: "feature bead is `in_progress` — Phase 2 may not
+have finished; the diff may not reflect the full plan." Continue
+anyway; do not block.
 
-1. `.superpowers/plans/$ARGUMENTS.md` — the plan (what we said we'd do).
-2. `.superpowers/review-notes/$ARGUMENTS.md` — the review-focus note (deliberation
-   context: decisions to verify, rejected approaches, invariants, deferred work).
-3. The PR diff. If a PR is open for the current branch, use `gh pr view --json
-   number,title,headRefName,body` to locate it and `gh pr diff <number>` for the
-   diff; if not, ask which PR number to review.
+Without beads, or `$feature_id` is empty: use `$ARGUMENTS`. If
+`$ARGUMENTS` is also empty, stop and ask the user for a slug. Do not
+fall back silently.
 
-If any of the three inputs is missing, stop and tell me which one — don't proceed
-on partial context.
+Read three inputs in order:
+
+1. `$plan_path` (or `.superpowers/plans/$slug.md`) — the plan.
+2. `$note_path` (or `.superpowers/review-notes/$slug.md`) — the
+   review-focus note (deliberation context: decisions to verify,
+   rejected approaches, invariants, deferred work).
+3. The PR diff. If a PR is open for the current branch, use `gh pr view
+   --json number,title,headRefName,body` to locate it and `gh pr diff
+   <number>` for the diff; if not, ask which PR number to review.
+
+If any of the three inputs is missing, stop and tell the user which one
+— don't proceed on partial context.
 
 ## Pin PR number to the feature bead (optional)
 
