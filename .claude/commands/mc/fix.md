@@ -45,7 +45,7 @@ Resolve the feature bead by branch label:
       --json | jq -r '.[0].id // empty')
 
 If `$feature_id` is empty, stop and tell the user: no feature bead
-exists for the current branch — run `/mc:brainstorm-issue <N>` first.
+exists for the current branch — run `/mc:brainstorm <N>` first.
 
 Otherwise enumerate every child finding not yet closed, sorted so
 in-flight items rise to the top (`approved` → `in_progress` →

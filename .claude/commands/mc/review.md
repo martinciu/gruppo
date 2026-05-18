@@ -21,7 +21,7 @@ step — log the error, continue.
 
 With beads (default — `bd status` exits 0): always look up the feature
 bead by branch label. It carries the slug and the artefact paths as
-comments — pinned by `/mc:brainstorm-issue` at creation time.
+comments — pinned by `/mc:brainstorm` at creation time.
 
     branch=$(git symbolic-ref --short HEAD)
     feature_id=$(bd list --label "branch:$branch" --type feature \

@@ -30,7 +30,7 @@ step — log the error, continue.
       --json | jq -r '.[0].id // empty')
 
 If `$feature_id` is empty, stop and tell the user: no feature bead carries
-`branch:$branch` — they probably want to run `/mc:brainstorm-issue <N>`
+`branch:$branch` — they probably want to run `/mc:brainstorm <N>`
 first, or pass a plan path explicitly (see fallback below).
 
 Read the `plan:` comment from the feature bead:
@@ -124,7 +124,7 @@ slug often diverge (e.g., branch `42-fix-auth` for slug
 
 Three reasons:
 
-1. **Single command per phase.** Phase 1 = `/mc:brainstorm-issue`, Phase
+1. **Single command per phase.** Phase 1 = `/mc:brainstorm`, Phase
    3 = `/mc:review`, Phase 4 = `/mc:fix`. Phase 2 used to require the
    user to remember `/superpowers:executing-plans <slug>` and run the bd
    transitions manually. This closes the gap.

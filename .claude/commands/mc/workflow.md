@@ -18,7 +18,7 @@ Superpowers skills. Three sessions, three models, one PR.
 
 | Phase           | Session | Model  | Effort         | Driver                                       |
 |-----------------|---------|--------|----------------|----------------------------------------------|
-| 1. Brainstorm + plan      | A         | Opus 4.7              | `max` (+ `ultrathink` on key turns)  | `/mc:brainstorm-issue <N>`                   |
+| 1. Brainstorm + plan      | A         | Opus 4.7              | `max` (+ `ultrathink` on key turns)  | `/mc:brainstorm <N>`                   |
 | 2. Execute + smoke test   | B (fresh) | Sonnet 4.6            | `high` ↓ `low`                       | `/mc:execute` (or `/superpowers:subagent-driven-development` for SDD plans) |
 | 3. PR review              | C (fresh) | Opus 4.7              | `xhigh` (or `max`)                   | `/mc:review` (slug optional — resolved from feature bead) |
 | 4. Apply fixes (review + manual testing) | C | Opus 4.7 → Sonnet 4.6 / Haiku 4.5 | dispatcher `xhigh`, typers vary | `/mc:fix <description>` (per approved/observed fix) |
@@ -129,7 +129,7 @@ on key brainstorm turns**
 Open a fresh Opus session in the repo. Run:
 
 ```
-/mc:brainstorm-issue <issue-number>
+/mc:brainstorm <issue-number>
 ```
 
 The command drives six steps without stopping in the middle:
@@ -178,7 +178,7 @@ For inline execution (the common case), paste:
 ```
 
 `/mc:execute` resolves the plan path from the feature bead (created by
-`/mc:brainstorm-issue` in Phase 1, with the plan path pinned as a
+`/mc:brainstorm` in Phase 1, with the plan path pinned as a
 comment), transitions the bead `open → in_progress`, runs
 `/superpowers:executing-plans` inline, and transitions
 `in_progress → awaiting_review` on a clean smoke pass. In repos
@@ -488,7 +488,7 @@ carries the deliberation.
 When `.beads/` is initialised in the worktree, the `/mc:*` commands
 additionally pin per-feature state to bd:
 
-- `/mc:brainstorm-issue` creates a feature bead with `branch:<name>`
+- `/mc:brainstorm` creates a feature bead with `branch:<name>`
   label and five comments: `github-issue:`, `slug:`, `spec:`, `plan:`,
   `review-note:` (the last three pinning the artefact paths so
   downstream commands don't re-derive them from the slug).
@@ -506,7 +506,7 @@ additionally pin per-feature state to bd:
 ### Feature-bead lifecycle
 
 ```
-open  ──/mc:brainstorm-issue──▶  open        (plan / spec / note paths pinned)
+open  ──/mc:brainstorm──▶  open        (plan / spec / note paths pinned)
                                   │
                                   └──/mc:execute──▶  in_progress
                                                           │
