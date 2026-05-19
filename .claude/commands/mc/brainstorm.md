@@ -115,6 +115,7 @@ Otherwise skip.
          --type feature \
          --priority P1 \
          --labels "branch:$branch" \
+         --description "<one-sentence summary>" \
          "<gh issue title>" \
          --json | jq -r '.id // .[0].id')
        bd comment "$feature_id" "github-issue: #$ARGUMENTS"
@@ -126,6 +127,12 @@ Otherwise skip.
    The three artefact-path comments let `/mc:execute` and `/mc:review`
    resolve their inputs without re-parsing the slug. Substitute the
    actual slug; do not leave the literal `<slug>` token.
+
+   **`--description` is a single sentence** distilled from the spec
+   you just wrote — what this feature *does*, in plain prose. Not the
+   issue title verbatim, not a multi-paragraph summary. One sentence,
+   declarative, no trailing period required. Example: "Wire beads as
+   the per-feature state spine across the `/mc:*` workflow."
 
 3. Print a one-line footer ack:
 
