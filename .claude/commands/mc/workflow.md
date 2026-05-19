@@ -554,6 +554,25 @@ Superpowers + `.superpowers/` markdown workflow. Stealth mode skips the
 hook registration entirely. The `/mc:*` commands are the explicit
 load-state surface; hooks would be redundant.
 
+### bd v2.0 — JSON envelope migration (heads-up)
+
+`bd --json` will change format in bd v2.0 (current command-output
+footer: *"bd --json output format will change in v2.0. Set
+BD_JSON_ENVELOPE=1 to opt in early. See docs/JSON_SCHEMA.md for
+migration details."*). The shape today across v1.x:
+
+- `bd create --json` → object (use `.id`)
+- `bd show <id> --json` → array of one (use `.[0]…`)
+- `bd list --json` → array (use `.[0]…`)
+
+The jq paths in `brainstorm.md` / `review.md` / `fix.md` / `execute.md`
+are written for the v1.x shapes above. `bd create` uses defensive
+`.id // .[0].id` so a misread by the executing model still resolves.
+When bd v2.0 ships the envelope by default, every jq path in the
+`/mc:*` docs needs revisiting — likely a `.data.id` / `.data[0]…`
+sweep, or a small `bd-jq()` wrapper. Track via the corresponding
+gruppo issue rather than firefighting at upgrade time.
+
 ## Why this shape works
 
 - **Divergent vs convergent split.** Brainstorm explores; review
