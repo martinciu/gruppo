@@ -174,7 +174,7 @@ Reproduction: <steps>
 # Include only if the review-note pinned a rigor expectation:
 Test rigor: <unit | integration>
 EOF
-)" --json | jq -r '.id'
+)" --json | jq -r '.id // .[0].id'
 
 Print `bead bd-XXXX created` per finding as a footer.
 

@@ -116,7 +116,7 @@ Otherwise skip.
          --priority P1 \
          --labels "branch:$branch" \
          "<gh issue title>" \
-         --json | jq -r '.id')
+         --json | jq -r '.id // .[0].id')
        bd comment "$feature_id" "github-issue: #$ARGUMENTS"
        bd comment "$feature_id" "slug: <slug>"
        bd comment "$feature_id" "spec: .superpowers/specs/<slug>.md"
