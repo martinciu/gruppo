@@ -9,7 +9,7 @@ You are driving GitHub issue **#$ARGUMENTS** in the current repo from brainstorm
 ## Beads integration (optional)
 
 If `bd` is on PATH (beads is installed — `.beads/` does NOT need to exist
-yet; Step 5.5 will create it on first use), the command additionally
+yet; Step 5 will create it on first use), the command additionally
 records per-feature state in beads. Otherwise the command behaves exactly
 as documented below — no extra prompts, no banner.
 
@@ -66,21 +66,7 @@ Load `superpowers:writing-plans` and follow it to convert the spec into an imple
 - Keep skill context loaded — task breakdowns should reflect the idiomatic patterns from the skills loaded in Step 2, not retrofit them later.
 - Apply the inline-vs-SDD guidance from `~/.claude/CLAUDE.md` when shaping tasks: state the chosen execution mode and reason in the plan.
 
-## Step 5 — Review note
-
-Once the plan file has been written and saved (confirm on disk before continuing), invoke the `/mc:review-note` slash command.
-
-**Argument format — critical:** `$ARGUMENTS` becomes the filename. Pass the **bare slug only** — no directory prefix, no `.md` extension. Derive it from the plan filename:
-
-- Plan path: `.superpowers/plans/2026-05-14-chart-colors-per-unit.md`
-- Slug to pass: `2026-05-14-chart-colors-per-unit`
-- Resulting note path: `.superpowers/review-notes/2026-05-14-chart-colors-per-unit.md`
-
-Do **not** pass the full plan path — that produces a nested `.superpowers/review-notes/.superpowers/plans/<file>.md.md` directory mess.
-
-`/mc:review-note` handles frontmatter on its own — do not post-process the generated note to add `spec:` or `plan:` pointers (that contradicts the command's distillation rule).
-
-## Step 5.5 — Pin feature state in beads (optional)
+## Step 5 — Pin feature state in beads (optional)
 
 If `bd` is on PATH (`command -v bd` exits 0), pin per-feature state.
 Otherwise skip.
@@ -142,10 +128,10 @@ Failure handling: each sub-step is independent. If step 1's `bd init`
 fails unexpectedly (e.g., permissions, disk full), still attempt
 step 2 — `bd create` will tell you whether bd is actually usable. If
 step 2 fails (bd unreachable, schema error), log the error and skip
-step 3; the spec / plan / review-note remain on disk and the
-workflow continues. **Do not let one bd failure cascade into
-skipping the rest of step 5.5** — that loses the feature bead even
-when bd is otherwise healthy.
+step 3; the spec and plan remain on disk and the workflow continues
+to Step 6 (handoff) and Step 7 (review note). **Do not let one bd
+failure cascade into skipping the rest of Step 5** — that loses the
+feature bead even when bd is otherwise healthy.
 
 ## Step 6 — Finish
 
@@ -157,7 +143,8 @@ Confirm to the user:
 
 1. The spec path under `.superpowers/specs/`.
 2. The plan path under `.superpowers/plans/`.
-3. The review-note path produced in Step 5.
+3. The review-note path that will be written in Step 7:
+   `.superpowers/review-notes/<slug>.md` (substitute the actual slug).
 4. **Execution-mode recommendation.** Based on the plan's task profile and
    the inline-vs-SDD guidance in `~/.claude/CLAUDE.md`, recommend one:
    - **Inline** (`/superpowers:executing-plans`) — cheaper when most tasks
@@ -185,6 +172,39 @@ Confirm to the user:
    session first (e.g. `claude --model sonnet` in a fresh terminal or via
    the model-picker) before pasting.
 
-Do not start implementation yourself. Stop here.
+Do not start implementation yourself.
+
+## Step 7 — Review note (must be last)
+
+Only **after** Steps 5 (bd-create) and 6 (handoff summary) have both
+completed, invoke the `/mc:review-note` slash command.
+
+**Argument format — critical:** the argument becomes the filename. Pass
+the **bare slug only** — no directory prefix, no `.md` extension. Derive
+it from the plan filename:
+
+- Plan path: `.superpowers/plans/2026-05-14-chart-colors-per-unit.md`
+- Slug to pass: `2026-05-14-chart-colors-per-unit`
+- Resulting note path: `.superpowers/review-notes/2026-05-14-chart-colors-per-unit.md`
+
+Do **not** pass the full plan path — that produces a nested
+`.superpowers/review-notes/.superpowers/plans/<file>.md.md` directory
+mess.
+
+`/mc:review-note` handles frontmatter on its own — do not post-process
+the generated note to add `spec:` or `plan:` pointers (that contradicts
+the command's distillation rule).
+
+> **Why this step is last.** Invoking a slash command via the `Skill`
+> tool loads that command's instructions as the active context. When
+> the invoked skill finishes, the assistant frequently treats the whole
+> workflow as done and stops — silently skipping any remaining steps of
+> `/mc:brainstorm`. (Observed on `243-schema-missmatch` 2026-05-19: bd
+> create and handoff summary both got dropped.) Placing
+> `/mc:review-note` last makes this exit benign — the bead is already
+> in beads, the handoff is already on screen, and the review note
+> landing on disk is the natural end of the workflow.
+
+Stop here.
 
 Begin now with Step 1.

@@ -132,7 +132,7 @@ Open a fresh Opus session in the repo. Run:
 /mc:brainstorm <issue-number>
 ```
 
-The command drives six steps without stopping in the middle:
+The command drives seven steps without stopping in the middle:
 
 1. **Fetch the issue** via `gh issue view`.
 2. **Classify surfaces** (language, framework, libraries, subsystem) and
@@ -147,12 +147,18 @@ The command drives six steps without stopping in the middle:
    `.superpowers/plans/`. Reference the spec path and issue number in
    frontmatter. State chosen execution mode (inline vs SDD) and reason
    in the plan.
-5. **Review-note** via `/mc:review-note <slug>` — distills the brainstorm
-   to one page for a future reviewer. Saves to
-   `.superpowers/review-notes/<slug>.md`.
+5. **Pin feature state in beads** (when `bd` is on PATH). `bd create
+   --type feature` plus comments pinning `github-issue:`, `slug:`,
+   `spec:`, `plan:`, `review-note:` so downstream commands resolve
+   their inputs from the bead.
 6. **Hand off.** Print the three artefact paths, recommend inline vs
    SDD with a one-line reason, and emit a paste-ready slash command
    for Session B.
+7. **Review-note** via `/mc:review-note <slug>` (must be last —
+   invoking a slash command via the `Skill` tool tends to end the
+   session, so anything that has to land deterministically — bd
+   create, handoff — runs *before* it). Saves to
+   `.superpowers/review-notes/<slug>.md`.
 
 **Effort:** raise the session to `/effort max` for the brainstorm — this
 is the only phase where compute-spent-thinking has outsized leverage on

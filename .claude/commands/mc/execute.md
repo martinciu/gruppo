@@ -87,6 +87,15 @@ get skipped:
 
 ## Step 4 — Transition feature bead awaiting_review
 
+> **HALT — do not stop after the executing-plans skill returns.**
+> Invoking a slash command via the `Skill` tool loads that command's
+> instructions as the active context. When the invoked skill finishes,
+> the assistant frequently treats the whole workflow as done and stops —
+> silently skipping Steps 4 and 5 of `/mc:execute`. (Observed elsewhere
+> in `/mc:*` on 2026-05-19.) The bd transition below is **required**;
+> if you skip it the feature bead stays at `in_progress` and `/mc:review`
+> in Phase 3 will warn that Phase 2 looks unfinished.
+
 Once the plan is executed and a clean smoke pass has happened:
 
     bd update "$feature_id" --status=awaiting_review
