@@ -540,13 +540,34 @@ behaves exactly as documented above.
 ### Setup (one-time per repo)
 
     cd /path/to/main-worktree
-    bd init --stealth --non-interactive
+    bd init --stealth --non-interactive --prefix <repo-name>-
+    bd config set status.custom "awaiting_review"
 
-This adds `.beads/` and `.claude/settings.local.json` to
-`.git/info/exclude` (local-only, never committed). Does NOT modify
-`.claude/settings.json`. Collaborators on a public repo see nothing.
+`--prefix` is **critical** — `bd init` otherwise derives the issue
+prefix from the current directory's basename. Run from inside a
+worktree (e.g. `198-nord/`) and every bead gets `bd_198-nord-XXX`
+permanently, even after the worktree is removed. Pass the primary
+repo's basename explicitly with a trailing hyphen (bd's validator
+requires ≤8 chars, lowercase letters / digits / hyphens, starting
+with a letter, ending with `-`). Examples: `ccpulse-`, `dot-`,
+`gruppo-`. If a previous init already baked in the wrong prefix:
 
-Also add `bd *` to the subagent allowlist in `~/.claude/settings.json`
+    bd rename-prefix <new-prefix>-
+
+`bd init --stealth` adds `.beads/` to `.git/info/exclude` (local-only,
+never committed). Does NOT modify `.claude/settings.json`. Collaborators
+on a public repo see nothing.
+
+`status.custom = awaiting_review` is the bead state `/mc:execute`
+transitions to on plan completion — without it `bd update --status`
+errors at that step.
+
+**`/mc:*` commands never run `bd init` themselves** — historically
+they did, and the worktree-basename trap above bit hard enough to
+make this a deliberate setup step. If `bd status` exits non-zero in
+a /mc:* invocation, the beads-pinning paths simply skip.
+
+Also add `Bash(bd *)` to the allow array in `~/.claude/settings.json`
 so subagent fix dispatch can run `bd update --claim` and friends
 without prompting.
 

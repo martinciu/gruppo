@@ -8,22 +8,28 @@ You are driving GitHub issue **#$ARGUMENTS** in the current repo from brainstorm
 
 ## Beads integration (optional)
 
-If `bd` is on PATH (beads is installed — `.beads/` does NOT need to exist
-yet; Step 5 will create it on first use), the command additionally
-records per-feature state in beads. Otherwise the command behaves exactly
-as documented below — no extra prompts, no banner.
-
-Unlike the read-side `/mc:*` commands (which require `.beads/` to already
-exist via `bd status`), this command is the *bootstrap* — it's the only
-command that ever runs `bd init`.
+If `bd status` exits 0 (beads is installed AND a `.beads/` is reachable
+by walking up from CWD — usually because the primary repo has been
+`bd init`'d), the command additionally records per-feature state in
+beads. Otherwise the command behaves exactly as documented below —
+no extra prompts, no banner.
 
 Detection one-liner:
 
-    command -v bd >/dev/null 2>&1 || skip_beads=1
+    bd status >/dev/null 2>&1 || skip_beads=1
 
 Every `bd ...` invocation below is guarded by `[ -z "$skip_beads" ]`. A
 failure inside a guarded block **never** blocks the underlying workflow
 step — log the error, continue.
+
+**This command never runs `bd init`.** Auto-initialising from a worktree
+historically picked up the worktree's directory name as the bd
+`issue_prefix` (e.g. `198-nord-`), which gets baked into every bead's
+ID forever and survives the worktree's removal. Initialisation is now
+a one-time manual step per repo — see *Setup* in `/mc:workflow`'s
+"Beads as the per-feature state spine" section. If `bd status` exits
+non-zero here, the beads-pinning steps simply skip; the spec / plan /
+review-note workflow still runs to completion.
 
 ## Step 1 — Fetch the issue
 
@@ -68,33 +74,12 @@ Load `superpowers:writing-plans` and follow it to convert the spec into an imple
 
 ## Step 5 — Pin feature state in beads (optional)
 
-If `bd` is on PATH (`command -v bd` exits 0), pin per-feature state.
-Otherwise skip.
+If `bd status` exits 0, pin per-feature state. Otherwise skip — do
+**not** attempt to `bd init`; surface a one-line note ("bd reachable
+but no `.beads/` found — initialise once per repo per `/mc:workflow`
+§ Setup, then re-run") and continue with the workflow.
 
-1. **Ensure bd has a reachable database.** Test with `bd status`, which
-   walks up from CWD looking for a `.beads/` (main repo, parent
-   worktree, anywhere up the tree). If reachable, skip init — bd is
-   already shared across worktrees per its default topology.
-
-       if ! bd status >/dev/null 2>&1; then
-         bd init --stealth --quiet --non-interactive
-         bd config set status.custom "awaiting_review"
-       fi
-
-   Why `bd status` and not `[ ! -d .beads ]`: in a worktree, the
-   local directory rarely has its own `.beads/` (the user-level
-   `[step.copy-ignored] exclude = [".beads/"]` keeps it out, and
-   `bd init --stealth` would abort against the parent's DB anyway
-   with "workspace already initialized"). The walk-up check is the
-   correct signal — bd is "ready" if any ancestor has been
-   initialized, regardless of where exactly.
-
-   The init branch fires only on the very first
-   `/mc:brainstorm` run in a project (no `.beads/` anywhere up
-   the tree). Subsequent runs — same project, any worktree — skip
-   straight to step 2.
-
-2. Create the feature bead:
+1. Create the feature bead:
 
        branch=$(git symbolic-ref --short HEAD)
        feature_id=$(bd create \
@@ -120,18 +105,16 @@ Otherwise skip.
    declarative, no trailing period required. Example: "Wire beads as
    the per-feature state spine across the `/mc:*` workflow."
 
-3. Print a one-line footer ack:
+2. Print a one-line footer ack:
 
        echo "bead $feature_id created"
 
-Failure handling: each sub-step is independent. If step 1's `bd init`
-fails unexpectedly (e.g., permissions, disk full), still attempt
-step 2 — `bd create` will tell you whether bd is actually usable. If
-step 2 fails (bd unreachable, schema error), log the error and skip
-step 3; the spec and plan remain on disk and the workflow continues
-to Step 6 (handoff) and Step 7 (review note). **Do not let one bd
-failure cascade into skipping the rest of Step 5** — that loses the
-feature bead even when bd is otherwise healthy.
+Failure handling: if step 1's `bd create` fails (bd unreachable, schema
+error, prefix validation), log the error and skip step 2; the spec and
+plan remain on disk and the workflow continues to Step 6 (handoff) and
+Step 7 (review note). **Do not let one bd failure cascade into
+skipping the rest of Step 5** — that loses the feature bead even when
+bd is otherwise healthy.
 
 ## Step 6 — Finish
 
