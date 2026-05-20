@@ -157,10 +157,15 @@ directives that gate the field beneath them. When the condition is
 false, **omit both the `#` line and the field line that follows**;
 do not include the `#` directives in the actual bd description.
 
+Set `--priority` from the finding's severity emoji: 🔴 must-fix → `P1`,
+🟡 should-fix → `P2`, 🟢 nit → `P3`. P0 stays reserved for genuine
+security / data-loss / broken-build findings — bump a 🔴 to `P0` only
+when it clears that bar.
+
     bd create \
       --parent "$feature_id" \
       --type bug \
-      --priority P2 \
+      --priority <P1|P2|P3 per severity emoji> \
       "<severity emoji> <one-line finding title>" \
       --description "$(cat <<EOF
 [<origin tag — drift|lens>] file:line — <citation>
@@ -185,7 +190,8 @@ Children automatically inherit the feature's `branch:<name>` label
 
 Before creating each bead, verify:
 
-- Severity emoji in title (🔴 / 🟡 / 🟢).
+- Severity emoji in title (🔴 / 🟡 / 🟢), and `--priority` matches it
+  (🔴 → P1, 🟡 → P2, 🟢 → P3).
 - Origin tag (`[drift]` or `[lens]`) on the first line of the
   description — `/mc:fix` reads this as a tier-picking signal
   (`[lens]` findings are usually pattern-matching against project
