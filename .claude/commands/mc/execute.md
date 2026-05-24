@@ -85,6 +85,21 @@ get skipped:
 - Pre-PR smoke bugs → fix inline in this same session, re-smoke, repeat
   until a pass yields zero new findings.
 
+### Exec gate (optional, auto-detected)
+
+If `.mc/checks/smoke.sh` exists and is executable, it is a **hard gate**:
+run it and require exit 0 before Step 4. It turns the smoke reminder above
+from a behavioural nudge into an exit-code contract (the pattern borrowed
+from Gas City's `[steps.check]`).
+
+    if [ -x .mc/checks/smoke.sh ]; then .mc/checks/smoke.sh || smoke_failed=1; fi
+
+On nonzero exit, **do not** transition the bead to `awaiting_review` and
+**do not** open the PR — fix the reported problems inline, re-run until it
+exits 0. If the script is absent, fall back to the skill-based
+`verification-before-completion` behaviour exactly as before (the gate is
+opt-in per repo; gruppo ships one, other repos may not).
+
 ## Step 4 — Transition feature bead awaiting_review
 
 > **HALT — do not stop after the executing-plans skill returns.**
@@ -96,7 +111,8 @@ get skipped:
 > if you skip it the feature bead stays at `in_progress` and `/mc:review`
 > in Phase 3 will warn that Phase 2 looks unfinished.
 
-Once the plan is executed and a clean smoke pass has happened:
+Once the plan is executed and a clean smoke pass has happened (including a
+zero-exit `.mc/checks/smoke.sh` when that gate is present):
 
     bd update "$feature_id" --status=awaiting_review
 

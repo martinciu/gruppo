@@ -259,6 +259,8 @@ say so explicitly in the PR body; don't claim it works.
 - All plan tasks marked complete.
 - Tests pass locally.
 - Use `superpowers:verification-before-completion` before claiming done.
+- **Exec gate:** if `.mc/checks/smoke.sh` exists, it must exit 0 before the
+  draft PR (see § Exec gates). Absent → skill-based smoke as below.
 - Smoke test passes (or its absence is explicitly flagged).
 - Commit on a feature branch; open a draft PR.
 
@@ -394,7 +396,8 @@ Switch back to the execution session (the one that owns the branch):
 1. Pull the fix commits from Phase 4 if they landed via a separate
    working copy; otherwise they are already local.
 2. Re-run the full test suite. `superpowers:verification-before-completion`
-   gates the "ready to merge" claim.
+   gates the "ready to merge" claim. **Exec gate:** if `.mc/checks/tests.sh`
+   exists, it must exit 0 here (see § Exec gates).
 3. **Final smoke test.** One more manual pass on the golden path plus
    anything Phase 4 changed. Typer-tier findings → fix inline in
    Session B and re-smoke. Architectural / mixed-tier findings →
@@ -488,6 +491,32 @@ None of these are committed. The PR carries the diff; the review-note
 carries the deliberation.
 
 ---
+
+## Exec gates (optional, auto-detected per repo)
+
+Two phase boundaries can be backed by an executable check that must exit 0,
+turning a prose "smoke-tested it" / "suite is green" claim into an exit-code
+contract. The pattern is borrowed from Gas City's `[steps.check]`; the scripts
+stay plain shell so they run with or without any Gas City install.
+
+| Gate | Phase | Script | Contract |
+|------|-------|--------|----------|
+| Smoke | 2 (execute) | `.mc/checks/smoke.sh` | exit 0 before flipping the bead to `awaiting_review` / opening the draft PR |
+| Tests | 5 (verify)  | `.mc/checks/tests.sh` | exit 0 before the "ready to merge" claim |
+
+Behaviour:
+
+- **Present + executable** → hard gate. Nonzero exit blocks the transition;
+  fix the reported problems inline and re-run until it exits 0.
+- **Absent** → no-op. The phase falls back to the skill-based
+  `verification-before-completion` flow exactly as documented — the gate is
+  opt-in per repo (same "fires only if it exists" shape as beads below).
+
+What each script asserts is repo-specific. In gruppo: `smoke.sh` checks JSON
+manifests parse, marketplace ↔ plugin consistency, declared plugin paths exist,
+and shell scripts pass `bash -n`; `tests.sh` runs `smoke.sh` plus every
+`*.test.sh` in the repo. Other repos drop in their own equivalents
+(`go test ./...`, `npm test`, etc.).
 
 ## Beads as the per-feature state spine (optional)
 
