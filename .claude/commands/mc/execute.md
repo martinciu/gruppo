@@ -1,5 +1,5 @@
 ---
-description: Resolve the plan for the current branch from beads, transition the feature bead in_progress → awaiting_review, and run /superpowers:executing-plans inline
+description: Resolve the plan for the current branch from beads, transition the feature bead in_progress → awaiting_review, run /superpowers:executing-plans inline, and open the PR
 ---
 
 Phase 2 driver — wraps `/superpowers:executing-plans` with bd-backed plan
@@ -108,19 +108,23 @@ a design flaw warranting re-brainstorming, tests failed unrecoverably),
 so a later `bd show` or `bd list` reflects that Phase 2 is still in
 flight. Tell the user why the transition was skipped.
 
-## Step 5 — Hand off to Phase 3
+## Step 5 — Open the PR
 
-After the bead lands at `awaiting_review`, two manual steps:
+After the bead lands at `awaiting_review`, open the PR from this command —
+opening it is the final act of Phase 2:
 
-    # Open the draft PR
-    gh pr create --draft --title "<title>" --body "<body>"
+    gh pr create --title "<title>" --body "<body>"
 
-    # Then in a fresh Opus session
+Phase 2 owns the branch and the smoke test, so it owns the PR-open too:
+the PR should exist before any handoff, and only after a clean smoke pass.
+Never open the PR with known smoke failures (see Step 3).
+
+## Step 6 — Hand off to Phase 3
+
+With the PR open, the only remaining step is the review — in a *fresh
+Opus session*:
+
     /mc:review        # slug arg is optional — resolved from bead
-
-Do not open the PR yourself from this command — Phase 2 owns the branch
-and the smoke test; the PR-open step is the natural seam between Phase 2
-and Phase 3.
 
 ## When the description is ambiguous
 
