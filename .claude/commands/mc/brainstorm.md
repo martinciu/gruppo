@@ -1,10 +1,10 @@
 ---
 description: Drive a GitHub issue from brainstorm → spec → plan → review-note, grounded in project skills and context7 docs
-argument-hint: <issue-number>
+argument-hint: "[issue-number]"
 model: claude-opus-4-7
 ---
 
-You are driving GitHub issue **#$ARGUMENTS** in the current repo from brainstorm all the way to a saved plan and review-note. Do not stop after the spec — continue through `superpowers:writing-plans` and `/mc:review-note`, and finish only once all three artifacts (spec, plan, review-note) are on disk.
+You are driving a GitHub issue in the current repo from brainstorm all the way to a saved plan and review-note. **Resolve the issue two ways:** if `$ARGUMENTS` is a non-empty issue number, use it directly; if it is empty — the usual case when launched by the `i` worktree launcher — resolve the issue from the current branch's **feature bead** (`i` has already pulled the issue into beads via `bd github pull` and labelled it `branch:<name>`). Do not stop after the spec — continue through `superpowers:writing-plans` and `/mc:review-note`, and finish only once all three artifacts (spec, plan, review-note) are on disk.
 
 ## Beads integration (optional)
 
@@ -31,15 +31,29 @@ a one-time manual step per repo — see *Setup* in `/mc:workflow`'s
 non-zero here, the beads-pinning steps simply skip; the spec / plan /
 review-note workflow still runs to completion.
 
-## Step 1 — Fetch the issue
+## Step 1 — Resolve the issue
 
-Run:
+**With an explicit number** (`$ARGUMENTS` non-empty — manual `/mc:brainstorm <N>`):
 
 ```sh
 gh issue view $ARGUMENTS --json number,title,body,labels,comments
 ```
 
-Read the title, body, and any comments carefully. If the issue does not exist or `$ARGUMENTS` is empty, stop and tell the user.
+**Without a number** (launched by `i`): resolve it from the current branch's
+feature bead, which `i` created via `bd github pull` and labelled `branch:<name>`:
+
+```sh
+branch=$(git symbolic-ref --short HEAD)
+feature_id=$(bd list --label "branch:$branch" --type feature --json | jq -r '.[0].id // empty')
+bd show "$feature_id" --json   # title + body (imported from the issue) + external_ref
+```
+
+The issue number is the trailing digits of the bead's `external_ref`
+(`https://github.com/<owner>/<repo>/issues/<N>`) — use it wherever this doc
+references the issue below.
+
+Read the title, body, and any comments carefully. If **neither** an explicit
+number **nor** a resolvable feature bead is available, stop and tell the user.
 
 ## Step 2 — Classify the work surface and load skills
 
@@ -79,17 +93,27 @@ If `bd status` exits 0, pin per-feature state. Otherwise skip — do
 but no `.beads/` found — initialise once per repo per `/mc:workflow`
 § Setup, then re-run") and continue with the workflow.
 
-1. Create the feature bead:
+1. **Adopt or create** the feature bead, then pin the artefact paths. When
+   `i` launched this session the bead already exists (pulled from GitHub,
+   labelled `branch:$branch`, linked by `external_ref`) — adopt it. In the
+   manual `/mc:brainstorm <N>` flow it doesn't exist yet — create it.
 
        branch=$(git symbolic-ref --short HEAD)
-       feature_id=$(bd create \
-         --type feature \
-         --priority P1 \
-         --labels "branch:$branch" \
-         --description "<one-sentence summary>" \
-         "<gh issue title>" \
-         --json | jq -r '.id // .[0].id')
-       bd comment "$feature_id" "github-issue: #$ARGUMENTS"
+       feature_id=$(bd list --label "branch:$branch" --type feature --json | jq -r '.[0].id // empty')
+
+       if [ -n "$feature_id" ]; then
+         # i flow — adopt the pulled bead; just set the distilled description.
+         bd update "$feature_id" --type feature --description "<one-sentence summary>"
+       else
+         # manual flow — create it, linking the issue via external_ref.
+         feature_id=$(bd create \
+           --type feature --priority P1 \
+           --labels "branch:$branch" \
+           --external-ref "gh-$ARGUMENTS" \
+           --description "<one-sentence summary>" \
+           "<gh issue title>" \
+           --json | jq -r '.id // .[0].id')
+       fi
        bd comment "$feature_id" "slug: <slug>"
        bd comment "$feature_id" "spec: .superpowers/specs/<slug>.md"
        bd comment "$feature_id" "plan: .superpowers/plans/<slug>.md"
@@ -97,7 +121,8 @@ but no `.beads/` found — initialise once per repo per `/mc:workflow`
 
    The three artefact-path comments let `/mc:execute` and `/mc:review`
    resolve their inputs without re-parsing the slug. Substitute the
-   actual slug; do not leave the literal `<slug>` token.
+   actual slug; do not leave the literal `<slug>` token. (No `github-issue:`
+   comment — the bead's `external_ref` is the structured link to the issue.)
 
    **`--description` is a single sentence** distilled from the spec
    you just wrote — what this feature *does*, in plain prose. Not the
@@ -109,8 +134,8 @@ but no `.beads/` found — initialise once per repo per `/mc:workflow`
 
        echo "bead $feature_id created"
 
-Failure handling: if step 1's `bd create` fails (bd unreachable, schema
-error, prefix validation), log the error and skip step 2; the spec and
+Failure handling: if step 1's `bd create`/`bd update` fails (bd unreachable,
+schema error, prefix validation), log the error and skip step 2; the spec and
 plan remain on disk and the workflow continues to Step 6 (handoff) and
 Step 7 (review note). **Do not let one bd failure cascade into
 skipping the rest of Step 5** — that loses the feature bead even when
