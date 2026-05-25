@@ -244,7 +244,7 @@ Type checking and test suites verify code *correctness*, not feature
 
 Most pre-PR smoke bugs are typer-tier — the Sonnet agent that just
 wrote them can fix them inline in Session B. Edit the code, re-smoke,
-repeat until a pass yields zero new findings, *then* open the draft
+repeat until a pass yields zero new findings, *then* open the
 PR. Don't open the PR with known smoke failures.
 
 Stop and surface to user only if a bug suggests a design flaw — that
@@ -260,7 +260,7 @@ say so explicitly in the PR body; don't claim it works.
 - Tests pass locally.
 - Use `superpowers:verification-before-completion` before claiming done.
 - Smoke test passes (or its absence is explicitly flagged).
-- Commit on a feature branch; open a draft PR.
+- Commit on a feature branch; open the PR.
 
 ---
 
@@ -431,7 +431,7 @@ open yet:
 
 1. **End of Phase 2**, before opening the PR — caught in Session B.
    **Fix inline in Session B** (same Sonnet agent that wrote the
-   buggy code). Re-smoke until clean, *then* open the draft PR.
+   buggy code). Re-smoke until clean, *then* open the PR.
 2. **Between Phase 3 and Phase 4 (optional)** — caught while
    Session C is active. **Send findings to `/mc:fix`** in Session C
    alongside the review-driven fixes.

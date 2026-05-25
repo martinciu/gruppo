@@ -1,2 +1,7 @@
 # Skill-creator eval workspaces — run output, not source
 plugins/*/skills/*-workspace/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
