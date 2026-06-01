@@ -36,7 +36,7 @@ review-note workflow still runs to completion.
 **With an explicit number** (`$ARGUMENTS` non-empty — manual `/mc:brainstorm <N>`):
 
 ```sh
-gh issue view $ARGUMENTS --json number,title,body,labels,comments
+gh issue view $ARGUMENTS --json number,title,body,labels,comments,url
 ```
 
 **Without a number** (launched by `i`): resolve it from the current branch's
@@ -48,7 +48,9 @@ feature_id=$(bd list --label "branch:$branch" --type feature --json | jq -r '.[0
 bd show "$feature_id" --json   # title + body (imported from the issue) + external_ref
 ```
 
-The issue number is the trailing digits of the bead's `external_ref`
+The issue number is the trailing segment of the bead's **id** (`<prefix>-<N>`,
+created that way by `i` / the manual flow), and equivalently the trailing
+digits of its `external_ref`
 (`https://github.com/<owner>/<repo>/issues/<N>`) — use it wherever this doc
 references the issue below.
 
@@ -102,17 +104,25 @@ but no `.beads/` found — initialise once per repo per `/mc:workflow`
        feature_id=$(bd list --label "branch:$branch" --type feature --json | jq -r '.[0].id // empty')
 
        if [ -n "$feature_id" ]; then
-         # i flow — adopt the pulled bead; just set the distilled description.
+         # i flow — adopt the bead i created (id already <prefix>-<N>);
+         # just set the distilled description.
          bd update "$feature_id" --type feature --description "<one-sentence summary>"
        else
-         # manual flow — create it, linking the issue via external_ref.
-         feature_id=$(bd create \
-           --type feature --priority P1 \
-           --labels "branch:$branch" \
-           --external-ref "gh-$ARGUMENTS" \
-           --description "<one-sentence summary>" \
-           "<gh issue title>" \
-           --json | jq -r '.id // .[0].id')
+         # manual flow — id mirrors the issue number: <prefix>-<N>.
+         prefix=$(bd config get issue_prefix 2>/dev/null | tail -n1)
+         feature_id="${prefix}-$ARGUMENTS"
+         if bd show "$feature_id" --json >/dev/null 2>&1; then
+           # already exists (re-run, or label lookup missed) — adopt, never
+           # `bd create --id` an existing id: it is a silent destructive upsert.
+           bd update "$feature_id" --type feature --description "<one-sentence summary>"
+         else
+           bd create --id "$feature_id" \
+             --type feature --priority P1 \
+             --labels "branch:$branch" \
+             --external-ref "<issue URL from Step 1's gh issue view .url>" \
+             --description "<one-sentence summary>" \
+             "<gh issue title>" >/dev/null
+         fi
        fi
        bd comment "$feature_id" "slug: <slug>"
        bd comment "$feature_id" "spec: .superpowers/specs/<slug>.md"
