@@ -147,10 +147,11 @@ The command drives seven steps without stopping in the middle:
    `.superpowers/plans/`. Reference the spec path and issue number in
    frontmatter. State chosen execution mode (inline vs SDD) and reason
    in the plan.
-5. **Pin feature state in beads** (when `bd` is on PATH). `bd create
-   --type feature` plus comments pinning `github-issue:`, `slug:`,
-   `spec:`, `plan:`, `review-note:` so downstream commands resolve
-   their inputs from the bead.
+5. **Pin feature state in beads** (when `bd` is on PATH). The feature bead's
+   id mirrors the issue number (`<prefix>-<N>`); `bd create --id` plus comments
+   pinning `slug:`, `spec:`, `plan:`, `review-note:` so downstream commands
+   resolve their inputs from the bead. (No `github-issue:` comment — the id
+   suffix and `external_ref` URL already encode the issue.)
 6. **Hand off.** Print the three artefact paths, recommend inline vs
    SDD with a one-line reason, and emit a paste-ready slash command
    for Session B.
@@ -494,10 +495,12 @@ carries the deliberation.
 When `.beads/` is initialised in the worktree, the `/mc:*` commands
 additionally pin per-feature state to bd:
 
-- `/mc:brainstorm` creates a feature bead with `branch:<name>`
-  label and five comments: `github-issue:`, `slug:`, `spec:`, `plan:`,
-  `review-note:` (the last three pinning the artefact paths so
-  downstream commands don't re-derive them from the slug).
+- `/mc:brainstorm` creates a feature bead **whose id mirrors the GitHub issue
+  number** (`<prefix>-<N>`, e.g. `gruppo-42`), with a `branch:<name>` label and
+  four comments: `slug:`, `spec:`, `plan:`, `review-note:` (the last three
+  pinning the artefact paths so downstream commands don't re-derive them from
+  the slug). Child finding beads from `/mc:review` keep hash ids — they have no
+  issue to mirror — and stay parented to `<prefix>-<N>`.
 - `/mc:execute` resolves the plan from the feature bead's `plan:`
   comment, transitions the feature `open → in_progress` at start, runs
   `/superpowers:executing-plans` inline, transitions
@@ -542,6 +545,14 @@ behaves exactly as documented above.
     cd /path/to/main-worktree
     bd init --stealth --non-interactive --prefix <repo-name>-
     bd config set status.custom "awaiting_review"
+
+The feature bead's id is `<prefix>-<N>` (configured `issue_prefix` + GitHub
+issue number). Both entry paths choose the id at creation time via
+`bd create --id`. **Never `bd create --id` an id that may already exist** — bd
+treats that as a silent upsert that overwrites every field (no error, no
+duplicate row). `/mc:brainstorm` and `i` both `bd show <id>` first and adopt
+the existing bead instead. bd ids are otherwise immutable: there is no
+per-bead rename, only `bd rename-prefix` (which rewrites *all* ids).
 
 `--prefix` is **critical** — `bd init` otherwise derives the issue
 prefix from the current directory's basename. Run from inside a
