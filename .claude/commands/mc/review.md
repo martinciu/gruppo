@@ -195,8 +195,8 @@ Before creating each bead, verify:
 - Origin tag (`[drift]` or `[lens]`) on the first line of the
   description — `/mc:fix` reads this as a tier-picking signal
   (`[lens]` findings are usually pattern-matching against project
-  style, leaning Sonnet; `[drift]` findings are often a single
-  concrete line, leaning Haiku).
+  style, leaning the mid typer; `[drift]` findings are often a single
+  concrete line, leaning the fast typer).
 - `file:line` citation that resolves in the current diff.
 - Concrete `Observed` line (what's actually in the code right now).
 - Concrete `Expected` line (what should be there — exact bytes if
@@ -224,17 +224,17 @@ End the response with a single explicit prompt for the user:
 > section as-is, "issue: 6, 8" to spin those off as follow-up `gh` issues
 > instead of applying, "none", or describe a different action. Use
 > `/mc:fix <description>` to apply each approved fix at the right tier
-> (Haiku / Sonnet / inline, picked by `/mc:fix`).
+> (fast typer / mid typer / inline, picked by `/mc:fix`).
 
 The user picks the subset; nothing is auto-applied.
 
 When the user replies, do **not** type the fix yourself — use `/mc:fix` per
 approved finding (one invocation per fix is fine; the command parses multiple
-fixes per invocation if the description lists them). Opus decides what to
-fix; `/mc:fix` picks the right typing tier (Haiku for mechanical, Sonnet
-for judgment-laden, or inline when the fix needs Opus reasoning). Spending
-Opus tokens on the typing is quota wasted at roughly 5× Sonnet and 25×
-Haiku rates.
+fixes per invocation if the description lists them). The reviewer (default
+model) decides what to fix; `/mc:fix` picks the right typing tier (fast
+typer for mechanical, mid typer for judgment-laden, or inline when the fix
+needs default-tier reasoning). Spending default-tier tokens on the typing
+wastes quota.
 
 ## Transition finding beads on user reply (optional)
 
