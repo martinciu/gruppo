@@ -1,7 +1,6 @@
 ---
 description: Drive a GitHub issue from brainstorm → spec → plan → review-note, grounded in project skills and context7 docs
 argument-hint: "[issue-number]"
-model: claude-opus-4-7
 ---
 
 You are driving a GitHub issue in the current repo from brainstorm all the way to a saved plan and review-note. **Resolve the issue two ways:** if `$ARGUMENTS` is a non-empty issue number, use it directly; if it is empty — the usual case when launched by the `i` worktree launcher — resolve the issue from the current branch's **feature bead** (`i` has already pulled the issue into beads via `bd github pull` and labelled it `branch:<name>`). Do not stop after the spec — continue through `superpowers:writing-plans` and `/mc:review-note`, and finish only once all three artifacts (spec, plan, review-note) are on disk.
@@ -153,8 +152,8 @@ bd is otherwise healthy.
 
 ## Step 6 — Finish
 
-The plan will be executed by **Sonnet** in a separate session (Opus types at
-~5× the per-token cost of Sonnet — keep Opus for design/review, not for
+The plan will be executed by **mid typer** in a separate session (default types at
+~5× the per-token cost of mid typer — keep default for design/review, not for
 typing diffs). Your job here is to hand off cleanly.
 
 Confirm to the user:
@@ -176,7 +175,7 @@ Confirm to the user:
    TOML edits" / "SDD — each task is ~150 LOC of TS with branching
    logic").
 
-5. **Paste-ready command** for the Sonnet session. Print the exact slash
+5. **Paste-ready command** for the mid typer session. Print the exact slash
    command in a fenced code block so it is one-click copyable. Format:
 
    ````
@@ -186,7 +185,7 @@ Confirm to the user:
    ````
 
    …or the `subagent-driven-development` equivalent if SDD was chosen.
-   Substitute the actual plan path. Remind the user to start the Sonnet
+   Substitute the actual plan path. Remind the user to start the mid typer
    session first (e.g. `claude --model sonnet` in a fresh terminal or via
    the model-picker) before pasting.
 

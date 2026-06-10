@@ -1,10 +1,10 @@
 ---
-description: Distill brainstorm context into a one-page review-focus note for a future Opus reviewer
+description: Distill brainstorm context into a one-page review-focus note for a future default reviewer
 ---
 
 Write a one-page "review focus" note to `.superpowers/review-notes/$ARGUMENTS.md`.
 
-Audience: a fresh Opus session that will review the PR for this plan. It
+Audience: a fresh default session that will review the PR for this plan. It
 has the plan file and the diff, but not this brainstorm. The note's job is
 to inject only the deliberation context that affects how to read the diff.
 

@@ -1,5 +1,5 @@
 ---
-description: Apply the described fix(es) by picking the right tier (Haiku / Sonnet / inline) — or, without arguments, list open child findings for the current feature bead
+description: Apply the described fix(es) by picking the right tier (fast typer / mid typer / inline) — or, without arguments, list open child findings for the current feature bead
 argument-hint: [<description>]    # optional; without args, lists open findings
 ---
 
@@ -68,7 +68,7 @@ Then **stop**. End with:
 > Re-invoke `/mc:fix <description>` to dispatch — copy a finding
 > title from the list above, or pass a bd ID directly (e.g.
 > `/mc:fix bd-abc123`). The dispatcher routes each fix through the
-> tier-picker (Haiku / Sonnet / inline) per Step 1.
+> tier-picker (fast typer / mid typer / inline) per Step 1.
 
 ## 0. Resolve `$ARGUMENTS` to a concrete brief
 
@@ -241,8 +241,8 @@ Identifying the target finding bead per fix:
 Set `BEADS_ACTOR` in the subagent environment when invoking the Agent
 tool. The tool's `env` parameter accepts a map; pass:
 
-    BEADS_ACTOR=haiku-subagent   # for Haiku 4.5
-    BEADS_ACTOR=sonnet-subagent  # for Sonnet 4.6
+    BEADS_ACTOR=haiku-subagent   # for fast typer
+    BEADS_ACTOR=sonnet-subagent  # for mid typer
 
 (If the Agent tool does not expose env passthrough, the dispatcher
 explicitly threads `BEADS_ACTOR=<name>` as a leading clause in every
