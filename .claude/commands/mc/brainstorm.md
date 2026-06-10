@@ -152,9 +152,10 @@ bd is otherwise healthy.
 
 ## Step 6 — Finish
 
-The plan will be executed by **mid typer** in a separate session (default types at
-~5× the per-token cost of mid typer — keep default for design/review, not for
-typing diffs). Your job here is to hand off cleanly.
+The plan will be executed in a **fresh session** on the default model.
+Delegation to cheaper typer tiers happens at the subagent level during
+execution and fixes — see `/mc:workflow` § Model tiers. Your job here is
+to hand off cleanly.
 
 Confirm to the user:
 
@@ -175,7 +176,7 @@ Confirm to the user:
    TOML edits" / "SDD — each task is ~150 LOC of TS with branching
    logic").
 
-5. **Paste-ready command** for the mid typer session. Print the exact slash
+5. **Paste-ready command** for the execution session. Print the exact slash
    command in a fenced code block so it is one-click copyable. Format:
 
    ````
@@ -185,9 +186,8 @@ Confirm to the user:
    ````
 
    …or the `subagent-driven-development` equivalent if SDD was chosen.
-   Substitute the actual plan path. Remind the user to start the mid typer
-   session first (e.g. `claude --model sonnet` in a fresh terminal or via
-   the model-picker) before pasting.
+   Substitute the actual plan path. Remind the user to start a fresh
+   session first (`claude` in a fresh terminal) before pasting.
 
 Do not start implementation yourself.
 
