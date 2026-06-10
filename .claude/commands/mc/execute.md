@@ -122,7 +122,7 @@ Never open the PR with known smoke failures (see Step 3).
 ## Step 6 — Hand off to Phase 3
 
 With the PR open, the only remaining step is the review — in a *fresh
-Opus session*:
+session*:
 
     /mc:review        # slug arg is optional — resolved from bead
 

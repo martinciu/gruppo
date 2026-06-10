@@ -12,37 +12,52 @@ description: End-to-end Superpowers workflow — brainstorm → execute → revi
 # Superpowers workflow — issue to merge
 
 The full path a piece of work travels, using the `/mc:*` commands plus
-Superpowers skills. Three sessions, three models, one PR.
+Superpowers skills. Three sessions, one model, tiered subagents, one PR.
+
+## Model tiers
+
+Sessions always run the **default model** — whatever the Claude Code
+config selects. No `--model` flags, no `model:` frontmatter anywhere in
+the `/mc:*` commands. Delegation downward happens only at the subagent
+level, and only for work that doesn't need brainpower:
+
+| Tier           | Meaning                                                          | Current alias |
+|----------------|------------------------------------------------------------------|---------------|
+| **default**    | the session model — all deciding, reviewing, architectural work  | *(none — inherit)* |
+| **mid typer**  | judgment-laden typing: multi-file, pattern-matching              | `sonnet`      |
+| **fast typer** | mechanical typing: single file, exact bytes                      | `haiku`       |
+
+This table is the single place to update when the model lineup changes.
+Everywhere else — this doc, `/mc:fix`, `/mc:review` — speaks in tier
+labels.
 
 ## At a glance
 
 | Phase           | Session | Model  | Effort         | Driver                                       |
 |-----------------|---------|--------|----------------|----------------------------------------------|
-| 1. Brainstorm + plan      | A         | Opus 4.7              | `max` (+ `ultrathink` on key turns)  | `/mc:brainstorm <N>`                   |
-| 2. Execute + smoke test   | B (fresh) | Sonnet 4.6            | `high` ↓ `low`                       | `/mc:execute` (or `/superpowers:subagent-driven-development` for SDD plans) |
-| 3. PR review              | C (fresh) | Opus 4.7              | `xhigh` (or `max`)                   | `/mc:review` (slug optional — resolved from feature bead) |
-| 4. Apply fixes (review + manual testing) | C | Opus 4.7 → Sonnet 4.6 / Haiku 4.5 | dispatcher `xhigh`, typers vary | `/mc:fix <description>` (per approved/observed fix) |
-| 5. Verify + merge         | B (resumed) | Sonnet 4.6          | `low`                                | run tests, push, merge                       |
+| 1. Brainstorm + plan      | A         | default              | `max` (+ `ultrathink` on key turns)  | `/mc:brainstorm <N>`                   |
+| 2. Execute + smoke test   | B (fresh) | default              | default ↓ `low`                      | `/mc:execute` (or `/superpowers:subagent-driven-development` for SDD plans) |
+| 3. PR review              | C (fresh) | default              | default (or `max`)                   | `/mc:review` (slug optional — resolved from feature bead) |
+| 4. Apply fixes (review + manual testing) | C | default → mid typer / fast typer | dispatcher default, typers vary | `/mc:fix <description>` (per approved/observed fix) |
+| 5. Verify + merge         | B (resumed) | default            | `low`                                | run tests, push, merge                       |
 
 Two streams feed Phase 4: formal **PR review findings** (Phase 3 output)
 and **manual testing findings** (you driving the feature in a browser /
 CLI / shell). Both funnel through `/mc:fix` so the tier discipline
 applies regardless of origin.
 
-### Effort vocabulary (Claude Code v2.1.117+)
+### Effort vocabulary
 
-`/effort` is the session-level dial. Supported levels per model:
+`/effort` is the session-level dial. Supported levels vary by model —
+run `/effort` in the session to see what the current model offers.
+This doc names effort relatively: **max** (the highest supported
+level), **default** (what the session starts at — calibrated for
+coding work), **`low`** (the cheapest supported level).
 
-| Model       | Supported `/effort` levels                  | Default |
-|-------------|---------------------------------------------|---------|
-| Opus 4.7    | `low`, `medium`, `high`, `xhigh`, `max`     | `xhigh` |
-| Opus 4.6 / Sonnet 4.6 | `low`, `medium`, `high`, `max`    | `high`  |
-| Haiku 4.5   | *not supported* (no effort levels)          | —       |
-
-- `low`–`xhigh` persist across sessions. `max` applies to the current
-  session only (unless set via `CLAUDE_CODE_EFFORT_LEVEL`).
-- Setting an unsupported level falls back to the highest supported one
-  (e.g. `xhigh` on Opus 4.6 runs as `high`).
+- `max` typically applies to the current session only (unless set via
+  `CLAUDE_CODE_EFFORT_LEVEL`); other levels persist across sessions.
+- Setting an unsupported level falls back to the highest supported
+  one. Fast-tier subagents may have no effort dial at all.
 - For a per-turn reasoning boost that does not change the session
   effort, drop the `ultrathink` keyword into the prompt — see
   [§ The `ultrathink` keyword](#the-ultrathink-keyword) below.
@@ -50,10 +65,11 @@ applies regardless of origin.
   session level when that subagent or skill is active — useful for SDD
   per-task tiering.
 
-Why three sessions: Opus costs ~5× Sonnet and ~25× Haiku per token. Keep
-Opus for *deciding*; keep Sonnet/Haiku for *typing*. Fresh sessions for
-divergent (brainstorm) and convergent (review) phases — different cognitive
-modes shouldn't share context.
+Why three sessions: fresh sessions keep divergent (brainstorm) and
+convergent (review) phases from contaminating each other — different
+cognitive modes shouldn't share context. The cost economy lives at the
+subagent level: default-tier tokens cost a large multiple of typer-tier
+tokens, so spend them on *deciding* and let typer tiers do the *typing*.
 
 ---
 
@@ -71,7 +87,7 @@ Two controls, two scopes:
 
 | Control       | Scope            | Persistence                        |
 |---------------|------------------|------------------------------------|
-| `/effort`     | Whole session    | Persists across sessions (`low`–`xhigh`); session-only for `max` |
+| `/effort`     | Whole session    | Persists across sessions (all levels below `max`); session-only for `max` |
 | `ultrathink`  | Single turn      | Per-prompt; reverts immediately afterwards |
 
 ### Where the boost earns its tokens
@@ -84,7 +100,7 @@ Two controls, two scopes:
   where a missing replacement could silently work coherently without
   the rejected approach (the easiest drift to miss).
 - **Phase 4, inline architectural fix** — when `/mc:fix` keeps a fix
-  inline because it needs Opus reasoning, drop `ultrathink` into the
+  inline because it needs default-tier reasoning, drop `ultrathink` into the
   fix prompt's decision turn.
 - Any moment you would otherwise raise `/effort` to `max` for one
   question and lower it after — `ultrathink` saves the round-trip.
@@ -98,8 +114,8 @@ Two controls, two scopes:
 - Sessions already on `/effort max` — the keyword still injects the
   instruction, but cannot exceed the adaptive ceiling; diminishing
   returns set in fast.
-- Haiku 4.5 subagents — Haiku has no effort dial; the keyword has no
-  hook to amplify.
+- Fast-tier subagents — no effort dial; the keyword has no hook to
+  amplify.
 
 ### Not to be confused with
 
@@ -123,10 +139,10 @@ behaviour.
 
 ## Phase 1 — Brainstorm + plan
 
-**Session A · Opus 4.7 · `/effort max` (or `xhigh` default) · `ultrathink`
+**Session A · default model · `/effort max` · `ultrathink`
 on key brainstorm turns**
 
-Open a fresh Opus session in the repo. Run:
+Open a fresh session in the repo. Run:
 
 ```
 /mc:brainstorm <issue-number>
@@ -174,10 +190,10 @@ selection) for a per-turn boost on top of the session level.
 
 ## Phase 2 — Execute + smoke test
 
-**Session B · Sonnet 4.6 · `/effort high` (default) → drop to `low` /
+**Session B · default model · default effort → drop to `low` /
 `medium` for mechanical runs**
 
-Start a *new* Sonnet session (`claude --model sonnet`, or model-picker).
+Start a *new* session (`claude` in a fresh terminal).
 For inline execution (the common case), paste:
 
 ```
@@ -219,11 +235,11 @@ duplicate the gating.
 SDD dispatches one subagent per task. Match the *subagent's* model and
 effort to the task, not the controller's:
 
-| Task profile                                 | Subagent model | Effort                |
+| Task profile                                 | Subagent tier  | Effort                |
 |----------------------------------------------|----------------|-----------------------|
-| Mechanical, single file, exact lines         | Haiku 4.5      | n/a (no effort dial)  |
-| Multi-file integration, branching logic      | Sonnet 4.6     | `medium` or `high`    |
-| Architectural / cross-cutting judgment       | Inline (Opus 4.7 controller) | `xhigh` |
+| Mechanical, single file, exact lines         | fast typer     | n/a (no effort dial)  |
+| Multi-file integration, branching logic      | mid typer      | `medium` or `high`    |
+| Architectural / cross-cutting judgment       | Inline (default-model controller) | session default |
 
 Set `model:` and `effort:` in the subagent prompt frontmatter (or as
 arguments to the dispatch tool) so the override applies only while
@@ -243,8 +259,8 @@ Type checking and test suites verify code *correctness*, not feature
 - **Backend / API** — hit the endpoint with `curl` / `httpie` against
   the happy path and one failure mode.
 
-Most pre-PR smoke bugs are typer-tier — the Sonnet agent that just
-wrote them can fix them inline in Session B. Edit the code, re-smoke,
+Most pre-PR smoke bugs are trivial — the session that just wrote
+them can fix them inline in Session B. Edit the code, re-smoke,
 repeat until a pass yields zero new findings, *then* open the
 PR. Don't open the PR with known smoke failures.
 
@@ -267,10 +283,10 @@ say so explicitly in the PR body; don't claim it works.
 
 ## Phase 3 — PR review
 
-**Session C · Opus 4.7 · `/effort xhigh` (default) — bump to `max` for
+**Session C · default model · default effort — bump to `max` for
 large or high-stakes diffs**
 
-Start a *new* Opus session — fresh eyes, no Phase 1 brainstorm in
+Start a *new* session — fresh eyes, no Phase 1 brainstorm in
 context. Run:
 
 ```
@@ -294,11 +310,11 @@ It produces a structured report:
 
 Then it **stops** and asks which findings to apply. Nothing auto-fixes.
 
-**Effort:** `xhigh` is the calibrated default for Opus 4.7 coding work.
+**Effort:** the session default is calibrated for coding work.
 For diffs that span many files, touch a security or migration surface,
 or carry a long `Replaced by:` list to verify, bump the session to
-`/effort max` before running `/mc:review` and drop it back to
-`xhigh` afterward. Each `Replaced by:` clause is a per-line
+`/effort max` before running `/mc:review` and drop it back
+afterward. Each `Replaced by:` clause is a per-line
 verification check, so extra reasoning budget here directly raises
 catch-rate.
 
@@ -306,8 +322,8 @@ catch-rate.
 
 ## Phase 4 — Apply fixes (review + manual testing)
 
-**Session C (continues) · Opus 4.7 dispatcher (`/effort xhigh`) →
-Haiku 4.5 / Sonnet 4.6 / inline Opus**
+**Session C (continues) · default-model dispatcher →
+fast typer / mid typer / inline**
 
 Two input streams feed this phase. Treat them identically — same
 dispatcher, same tier picker, same command.
@@ -355,22 +371,23 @@ The command runs a decision tree per fix:
 
 ```
 Brief is mechanical?
-├── Trivially mechanical (single file, exact bytes)        → Haiku subagent
-├── Mechanical with judgment ("match pattern", multi-file) → Sonnet subagent
-└── Needs real judgment                                    → inline (Opus)
+├── Trivially mechanical (single file, exact bytes)        → fast typer subagent
+├── Mechanical with judgment ("match pattern", multi-file) → mid typer subagent
+└── Needs real judgment                                    → inline (default model)
 ```
 
-If a fix needs Opus reasoning, the dispatcher does it inline — no
+If a fix needs default-tier reasoning, the dispatcher does it inline — no
 round-trip through a lower-tier subagent. If a fix surfaces an
 out-of-scope concern, `/mc:fix` proposes filing a new issue and
 **waits for explicit "yes"** before running `gh issue create`.
 
 **Effort per fix:**
-- Haiku 4.5 subagent: n/a — Haiku has no effort dial, the brief just
+- Fast-typer subagent: n/a — no effort dial, the brief just
   carries the exact bytes.
-- Sonnet 4.6 subagent: `medium` (pattern-matching against existing
+- Mid-typer subagent: `medium` (pattern-matching against existing
   style needs some reasoning but not the full session default).
-- Inline Opus 4.7: keep the session at `xhigh`; bump to `max` only if
+- Inline (default model): keep the session at its default effort;
+  bump to `max` only if
   the fix has architectural ramifications. Drop the `ultrathink`
   keyword into the inline-fix prompt for a per-turn boost when a single
   decision dominates the fix (e.g. picking a data-shape change).
@@ -388,7 +405,7 @@ finding list. Stop when a smoke pass yields zero new 🔴/🟡 findings.
 
 ## Phase 5 — Verify and merge
 
-**Session B (resumed) · Sonnet 4.6 · `/effort low`**
+**Session B (resumed) · default model · `/effort low`**
 
 Switch back to the execution session (the one that owns the branch):
 
@@ -397,7 +414,7 @@ Switch back to the execution session (the one that owns the branch):
 2. Re-run the full test suite. `superpowers:verification-before-completion`
    gates the "ready to merge" claim.
 3. **Final smoke test.** One more manual pass on the golden path plus
-   anything Phase 4 changed. Typer-tier findings → fix inline in
+   anything Phase 4 changed. Trivial findings → fix inline in
    Session B and re-smoke. Architectural / mixed-tier findings →
    resume or respawn Session C and dispatch via `/mc:fix`.
 4. Push the branch.
@@ -406,7 +423,7 @@ Switch back to the execution session (the one that owns the branch):
    cleanup decisions (delete branch, prune worktree, etc.).
 
 **Effort:** `low`. Test runs and `git push` need no reasoning budget;
-`low` is the cheapest effort setting Sonnet supports.
+`low` is the cheapest effort setting.
 
 ---
 
@@ -414,10 +431,10 @@ Switch back to the execution session (the one that owns the branch):
 
 ### When to spawn a new session
 
-- **Always new** between Phase 1 (Opus brainstorm) and Phase 2 (Sonnet
-  execute) — different model, different cognitive mode.
+- **Always new** between Phase 1 (brainstorm) and Phase 2 (execute) —
+  different cognitive modes.
 - **Always new** between Phase 2 and Phase 3 — fresh-eyes review is the
-  whole point. The Phase 3 Opus session has the plan and review-note,
+  whole point. The Phase 3 session has the plan and review-note,
   not the brainstorm transcript.
 - **Same session** for Phase 3 → Phase 4 — the reviewer dispatches
   fixes; sharing context is the win.
@@ -431,21 +448,20 @@ checkpoints — and where each fix lands depends on whether the PR is
 open yet:
 
 1. **End of Phase 2**, before opening the PR — caught in Session B.
-   **Fix inline in Session B** (same Sonnet agent that wrote the
+   **Fix inline in Session B** (same session that wrote the
    buggy code). Re-smoke until clean, *then* open the PR.
 2. **Between Phase 3 and Phase 4 (optional)** — caught while
    Session C is active. **Send findings to `/mc:fix`** in Session C
    alongside the review-driven fixes.
 3. **End of Phase 5**, before marking the PR ready — caught in
-   Session B. **Fix inline in Session B** for typer-tier bugs;
+   Session B. **Fix inline in Session B** for trivial bugs;
    escalate to Session C (resume or respawn) only if a bug needs
-   Opus dispatcher reasoning (architectural, mixed-tier).
+   dispatcher reasoning (architectural, mixed-tier).
 
-Principle: **the session that's currently active, with the right
-tier for the work, is where the fix happens.** Session B (Sonnet)
-handles typer-tier smoke fixes inline; Session C (Opus dispatcher
-via `/mc:fix`) handles fixes that benefit from tier routing —
-typically batches of post-review findings.
+Principle: **the session that's currently active is where the fix
+happens.** Session B handles pre-PR smoke fixes inline; Session C
+(the dispatcher via `/mc:fix`) handles fixes that benefit from tier
+routing — typically batches of post-review findings.
 
 ### When to stay inline vs SDD
 
@@ -458,21 +474,21 @@ Forces honesty about the call.
 
 ### Model + effort cheat-sheet
 
-| Activity                      | Model      | `/effort`        | One-off keyword         |
+| Activity                      | Tier       | `/effort`        | One-off keyword         |
 |-------------------------------|------------|------------------|-------------------------|
-| Brainstorm / spec             | Opus 4.7   | `max`            | `ultrathink` on key turns |
-| Plan writing                  | Opus 4.7   | `xhigh`          | —                       |
-| Review-note distillation      | Opus 4.7   | `xhigh`          | —                       |
-| Inline execution (mechanical) | Sonnet 4.6 | `low`            | —                       |
-| Inline execution (logic)      | Sonnet 4.6 | `high`           | —                       |
-| SDD subagent (mechanical)     | Haiku 4.5  | n/a              | —                       |
-| SDD subagent (multi-file)     | Sonnet 4.6 | `medium`–`high`  | —                       |
-| PR review                     | Opus 4.7   | `xhigh` (`max` for big diffs) | —          |
-| Fix dispatch (decision)       | Opus 4.7   | `xhigh`          | —                       |
-| Fix typing (mechanical)       | Haiku 4.5  | n/a              | —                       |
-| Fix typing (judgment)         | Sonnet 4.6 | `medium`         | —                       |
-| Fix typing (architectural)    | Opus 4.7 inline | `xhigh` (`max` if needed) | `ultrathink` |
-| Verify + merge                | Sonnet 4.6 | `low`            | —                       |
+| Brainstorm / spec             | default    | `max`            | `ultrathink` on key turns |
+| Plan writing                  | default    | default          | —                       |
+| Review-note distillation      | default    | default          | —                       |
+| Inline execution (mechanical) | default    | `low`            | —                       |
+| Inline execution (logic)      | default    | default          | —                       |
+| SDD subagent (mechanical)     | fast typer | n/a              | —                       |
+| SDD subagent (multi-file)     | mid typer  | `medium`–`high`  | —                       |
+| PR review                     | default    | default (`max` for big diffs) | —          |
+| Fix dispatch (decision)       | default    | default          | —                       |
+| Fix typing (mechanical)       | fast typer | n/a              | —                       |
+| Fix typing (judgment)         | mid typer  | `medium`         | —                       |
+| Fix typing (architectural)    | default, inline | default (`max` if needed) | `ultrathink` |
+| Verify + merge                | default    | `low`            | —                       |
 
 Set effort with `/effort <level>` in the session, with `--effort
 <level>` on launch, or via `effort:` frontmatter on a skill or subagent
@@ -616,7 +632,7 @@ gruppo issue rather than firefighting at upgrade time.
 - **Divergent vs convergent split.** Brainstorm explores; review
   converges. Different sessions keep their context shapes from
   contaminating each other.
-- **Opus decides, cheaper models type.** The expensive tokens go to
+- **The default model decides, typer tiers type.** The expensive tokens go to
   the decisions; the cheap tokens go to the typing. `/mc:fix` makes
   the tier pick a reflex, not a per-fix question.
 - **Review-note as the distillation interface.** The reviewer doesn't
@@ -629,7 +645,7 @@ gruppo issue rather than firefighting at upgrade time.
 - **Two complementary fix streams, routed by session.** Formal review
   catches structural drift the diff makes visible; manual testing
   catches behavioural drift the diff makes invisible. Pre-PR smoke
-  fixes happen inline in Session B (Sonnet wrote the bug, Sonnet
+  fixes happen inline in Session B (the session that wrote the bug
   fixes it); post-PR fixes go through `/mc:fix` in Session C (the
-  Opus dispatcher routes by tier). Session locality wins over uniform
+  dispatcher routes by tier). Session locality wins over uniform
   routing.
