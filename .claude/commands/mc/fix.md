@@ -122,23 +122,26 @@ moves:
 Is the brief mechanical (file path + exact bytes or behavioural target,
 no judgment in what to do)?
 ├── Trivially so (single file, exact lines, no new test harness,
-│   no pattern-matching against existing style)        → Haiku
+│   no pattern-matching against existing style)        → fast typer
 ├── Yes, but with judgment ("match existing pattern",
-│   multi-file, new tests in an existing harness)      → Sonnet
+│   multi-file, new tests in an existing harness)      → mid typer
 └── Needs real judgment in what the fix should be      → go to step 2.
 ```
 
-**Don't dispatch Opus to Opus.** If a brief needs Opus-tier reasoning to
-type the fix, you are Opus — don't round-trip through a subagent. Go to
-step 2 instead.
+Tiers map to model aliases per `/mc:workflow` § Model tiers
+(fast typer → `haiku`, mid typer → `sonnet`).
+
+**Don't dispatch your own tier.** If a brief needs default-tier
+reasoning to type the fix, you *are* the default tier — don't
+round-trip through a subagent. Go to step 2 instead.
 
 **Tier-pick prior from the origin tag** (when Step 0 resolved from a
 bd-ID, the bead description's first line carries `[drift]` or `[lens]`):
 
 - `[drift]` findings usually have a concrete `file:line` and exact
-  `Expected:` value — lean toward Haiku.
+  `Expected:` value — lean toward the fast typer.
 - `[lens]` findings usually pattern-match against project style or
-  span multiple files — lean toward Sonnet.
+  span multiple files — lean toward the mid typer.
 
 The decision tree above still wins if the brief surfaces judgment
 beyond what the tag suggests. See `/mc:review` § "Self-containment
@@ -174,9 +177,9 @@ Do the work yourself. No subagent dispatch.
 
 Stop. Wait for explicit "yes" before filing. Same gate as branch A.
 
-## 3. Dispatching a subagent (Haiku or Sonnet)
+## 3. Dispatching a subagent (fast or mid typer)
 
-When step 1 picked Haiku or Sonnet:
+When step 1 picked a typer tier:
 
 1. If the description lists multiple independent fixes, dispatch **one
    subagent per fix** in parallel via multiple Agent tool calls in a
@@ -184,7 +187,8 @@ When step 1 picked Haiku or Sonnet:
 
 2. Each subagent call uses:
    - `subagent_type: "general-purpose"`
-   - `model: "haiku"` or `"sonnet"` per step 1
+   - `model: "haiku"` or `"sonnet"` per step 1's tier pick (the
+     aliases from `/mc:workflow` § Model tiers)
    - A tight brief, ideally under ~500 tokens. Two assembly paths:
      - **Resolved from a bead** (Step 0 bd-ID path): pass the bead's
        `title + description` verbatim as the brief body. It already
@@ -294,7 +298,7 @@ iterates the awaiting-review queue as completions return:
 Before kicking off subagent calls, print a one-line summary per fix so the
 caller can see your tier picks:
 
-> Dispatching: 3 fixes → 2× Haiku (mechanical), 1× Sonnet (multi-file).
+> Dispatching: 3 fixes → 2× fast typer (mechanical), 1× mid typer (multi-file).
 > 1 fix kept inline (in-scope decision: <one-line rationale>).
 
 If beads is active, the dispatch announcement also lists the finding IDs
@@ -317,10 +321,10 @@ Two separate cases:
 
 ## Why this command exists
 
-The "Opus decides, Sonnet/Haiku types" split is what makes the
-SDD-with-Opus-reviewer workflow quota-efficient. Every fix typed by an
-Opus session costs ~5× a Sonnet token and ~25× a Haiku token against the
-Max quota. This command makes the tier decision part of the dispatch
+The "default model decides, typer tiers type" split is what makes the
+workflow quota-efficient. Default-tier tokens cost a large multiple of
+typer-tier tokens against the quota — spend them on the decision, not
+the typing. This command makes the tier decision part of the dispatch
 reflex, not a separate one the caller has to make.
 
 The "stay out of dispatch when the call needs judgment" branch is the
@@ -329,6 +333,6 @@ wasted dispatch round, and it routes architectural decisions to brainstorm
 instead of letting them slip into a quick `/mc:fix` by accident.
 
 This command assumes the **dispatcher is the highest tier in the session**
-(typically Opus). The tier picker relies on the dispatcher's judgment of
+(the default model). The tier picker relies on the dispatcher's judgment of
 the brief; a lower-tier dispatcher would be less reliable at that
 meta-judgment.
