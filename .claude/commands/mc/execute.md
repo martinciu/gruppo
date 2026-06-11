@@ -96,6 +96,13 @@ get skipped:
 > if you skip it the feature bead stays at `in_progress` and `/mc:review`
 > in Phase 3 will warn that Phase 2 looks unfinished.
 
+The transition below is a state write driven by a claim — "plan
+executed, smoke clean". Audit that claim against tool results from
+this session (the test run, the smoke commands, their output) before
+making it. Only transition on work you can point to evidence for; if
+something is not yet verified, say so explicitly and leave the bead at
+`in_progress`.
+
 Once the plan is executed and a clean smoke pass has happened:
 
     bd update "$feature_id" --status=awaiting_review

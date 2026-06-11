@@ -104,6 +104,12 @@ quality and skip this paragraph.
 
 ## Output format
 
+Coverage contract: report every issue you find, including ones you are
+uncertain about or consider low-severity. Do not pre-filter for
+importance or confidence at the finding stage — the **Recommendations**
+section below is the filter (that is what its Drop bucket is for). A
+finding that never gets written down can't be triaged.
+
 Produce a single review report with two sections:
 
 1. **Findings** — one flat list of every proposed change, numbered globally

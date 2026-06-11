@@ -35,9 +35,9 @@ labels.
 
 | Phase           | Session | Model  | Effort         | Driver                                       |
 |-----------------|---------|--------|----------------|----------------------------------------------|
-| 1. Brainstorm + plan      | A         | default              | `max` (+ `ultrathink` on key turns)  | `/mc:brainstorm <N>`                   |
+| 1. Brainstorm + plan      | A         | default              | default (+ `ultrathink` on key turns) | `/mc:brainstorm <N>`                   |
 | 2. Execute + smoke test   | B (fresh) | default              | default ↓ `low`                      | `/mc:execute` (or `/superpowers:subagent-driven-development` for SDD plans) |
-| 3. PR review              | C (fresh) | default              | default (or `max`)                   | `/mc:review` (slug optional — resolved from feature bead) |
+| 3. PR review              | C (fresh) | default              | default (+ `ultrathink` for big diffs) | `/mc:review` (slug optional — resolved from feature bead) |
 | 4. Apply fixes (review + manual testing) | C | default → mid typer / fast typer | dispatcher default, typers vary | `/mc:fix <description>` (per approved/observed fix) |
 | 5. Verify + merge         | B (resumed) | default            | `low`                                | run tests, push, merge                       |
 
@@ -64,6 +64,12 @@ coding work), **`low`** (the cheapest supported level).
 - Subagent / skill frontmatter can set `effort:` to override the
   session level when that subagent or skill is active — useful for SDD
   per-task tiering.
+- Calibration (current default-tier models): lower effort levels often
+  match or exceed the top levels of prior models, while raising effort
+  on routine turns mostly buys over-deliberation. Default is the right
+  session setting for every phase; reach for `ultrathink` per turn
+  before reaching for the dial, and reserve `max` for genuinely hard,
+  latency-insensitive deliberation.
 
 Why three sessions: fresh sessions keep divergent (brainstorm) and
 convergent (review) phases from contaminating each other — different
@@ -139,7 +145,7 @@ behaviour.
 
 ## Phase 1 — Brainstorm + plan
 
-**Session A · default model · `/effort max` · `ultrathink`
+**Session A · default model · default effort · `ultrathink`
 on key brainstorm turns**
 
 Open a fresh session in the repo. Run:
@@ -177,11 +183,14 @@ The command drives seven steps without stopping in the middle:
    create, handoff — runs *before* it). Saves to
    `.superpowers/review-notes/<slug>.md`.
 
-**Effort:** raise the session to `/effort max` for the brainstorm — this
-is the only phase where compute-spent-thinking has outsized leverage on
-the eventual diff. Drop the `ultrathink` keyword into the prompt on
-specific high-stakes turns (clarifying-question synthesis, design-shape
-selection) for a per-turn boost on top of the session level.
+**Effort:** keep the session at default effort. Brainstorming is mostly
+interactive clarifying turns, where a session-wide `max` buys latency
+and over-deliberation, not better questions — on current default-tier
+models, default effort already out-reasons prior models' top levels.
+Spend the boost surgically instead: drop the `ultrathink` keyword into
+the specific high-stakes turns (clarifying-question synthesis,
+design-shape selection). Reserve `/effort max` for a genuinely hard,
+latency-insensitive design problem — and drop it back afterward.
 
 **Output of phase:** spec, plan, review-note on disk, all under
 `.superpowers/` (gitignored, never committed).
@@ -283,7 +292,7 @@ say so explicitly in the PR body; don't claim it works.
 
 ## Phase 3 — PR review
 
-**Session C · default model · default effort — bump to `max` for
+**Session C · default model · default effort · `ultrathink` for
 large or high-stakes diffs**
 
 Start a *new* session — fresh eyes, no Phase 1 brainstorm in
@@ -310,13 +319,21 @@ It produces a structured report:
 
 Then it **stops** and asks which findings to apply. Nothing auto-fixes.
 
-**Effort:** the session default is calibrated for coding work.
-For diffs that span many files, touch a security or migration surface,
-or carry a long `Replaced by:` list to verify, bump the session to
-`/effort max` before running `/mc:review` and drop it back
-afterward. Each `Replaced by:` clause is a per-line
-verification check, so extra reasoning budget here directly raises
-catch-rate.
+**Effort:** the session default is calibrated for coding work and is
+usually enough — on current default-tier models a whole-session `max`
+tends to buy over-deliberation, not catch-rate. For a diff that spans
+many files or carries a long `Replaced by:` list to verify (each
+clause is a per-line verification check), drop `ultrathink` into the
+prompt that invokes `/mc:review`; reserve a session-level bump for
+genuinely hard, latency-insensitive reviews.
+
+**Security-surface diffs:** current default-tier models ship
+cybersecurity safety classifiers that can refuse benign
+security-focused review analysis — and their bug-finding gains
+explicitly exclude the domains those classifiers cover. If
+`/mc:review` on a security-heavy diff hits a refusal, re-run the
+review session with an explicit model override (`claude --model opus`)
+instead of re-prompting around it.
 
 ---
 
@@ -386,11 +403,11 @@ out-of-scope concern, `/mc:fix` proposes filing a new issue and
   carries the exact bytes.
 - Mid-typer subagent: `medium` (pattern-matching against existing
   style needs some reasoning but not the full session default).
-- Inline (default model): keep the session at its default effort;
-  bump to `max` only if
-  the fix has architectural ramifications. Drop the `ultrathink`
+- Inline (default model): keep the session at its default effort. Drop
+  the `ultrathink`
   keyword into the inline-fix prompt for a per-turn boost when a single
-  decision dominates the fix (e.g. picking a data-shape change).
+  decision dominates the fix (e.g. picking a data-shape change) or the
+  fix has architectural ramifications.
 
 **End of phase:** dispatcher reads each returned diff, verifies intent,
 stages and commits. Does **not** push from Session C — leave the
@@ -476,18 +493,18 @@ Forces honesty about the call.
 
 | Activity                      | Tier       | `/effort`        | One-off keyword         |
 |-------------------------------|------------|------------------|-------------------------|
-| Brainstorm / spec             | default    | `max`            | `ultrathink` on key turns |
+| Brainstorm / spec             | default    | default          | `ultrathink` on key turns |
 | Plan writing                  | default    | default          | —                       |
 | Review-note distillation      | default    | default          | —                       |
 | Inline execution (mechanical) | default    | `low`            | —                       |
 | Inline execution (logic)      | default    | default          | —                       |
 | SDD subagent (mechanical)     | fast typer | n/a              | —                       |
 | SDD subagent (multi-file)     | mid typer  | `medium`–`high`  | —                       |
-| PR review                     | default    | default (`max` for big diffs) | —          |
+| PR review                     | default    | default          | `ultrathink` for big diffs |
 | Fix dispatch (decision)       | default    | default          | —                       |
 | Fix typing (mechanical)       | fast typer | n/a              | —                       |
 | Fix typing (judgment)         | mid typer  | `medium`         | —                       |
-| Fix typing (architectural)    | default, inline | default (`max` if needed) | `ultrathink` |
+| Fix typing (architectural)    | default, inline | default     | `ultrathink`            |
 | Verify + merge                | default    | `low`            | —                       |
 
 Set effort with `/effort <level>` in the session, with `--effort
