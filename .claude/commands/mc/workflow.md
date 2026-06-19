@@ -35,7 +35,7 @@ labels.
 
 | Phase           | Session | Model  | Effort         | Driver                                       |
 |-----------------|---------|--------|----------------|----------------------------------------------|
-| 1. Brainstorm + plan      | A         | default              | default (+ `ultrathink` on key turns) | `/mc:brainstorm <N>`                   |
+| 1. Brainstorm + plan      | A         | default              | `max` (+ `ultrathink` on key turns)  | `/mc:brainstorm <N>`                   |
 | 2. Execute + smoke test   | B (fresh) | default              | default ↓ `low`                      | `/mc:execute` (or `/superpowers:subagent-driven-development` for SDD plans) |
 | 3. PR review              | C (fresh) | default              | default (+ `ultrathink` for big diffs) | `/mc:review` (slug optional — resolved from feature bead) |
 | 4. Apply fixes (review + manual testing) | C | default → mid typer / fast typer | dispatcher default, typers vary | `/mc:fix <description>` (per approved/observed fix) |
@@ -64,11 +64,12 @@ coding work), **`low`** (the cheapest supported level).
 - Subagent / skill frontmatter can set `effort:` to override the
   session level when that subagent or skill is active — useful for SDD
   per-task tiering.
-- Calibration: default is the right session setting for every phase.
+- Calibration: outside Phase 1, default is the right session setting.
   Raising effort on routine turns mostly buys latency and
   over-deliberation, not better output, so reach for `ultrathink` per
-  turn before reaching for the dial, and reserve `max` for genuinely
-  hard, latency-insensitive deliberation.
+  turn before reaching for the dial. Reserve a session-level `max` for
+  the brainstorm — where it has outsized leverage on the eventual
+  diff — or a genuinely hard, latency-insensitive deliberation.
 
 Why three sessions: fresh sessions keep divergent (brainstorm) and
 convergent (review) phases from contaminating each other — different
@@ -144,7 +145,7 @@ behaviour.
 
 ## Phase 1 — Brainstorm + plan
 
-**Session A · default model · default effort · `ultrathink`
+**Session A · default model · `/effort max` · `ultrathink`
 on key brainstorm turns**
 
 Open a fresh session in the repo. Run:
@@ -182,13 +183,12 @@ The command drives seven steps without stopping in the middle:
    create, handoff — runs *before* it). Saves to
    `.superpowers/review-notes/<slug>.md`.
 
-**Effort:** keep the session at default effort. Brainstorming is mostly
-interactive clarifying turns, where a session-wide `max` buys latency
-and over-deliberation, not better questions. Spend the boost surgically
-instead: drop the `ultrathink` keyword into the specific high-stakes
-turns (clarifying-question synthesis, design-shape selection). Reserve
-`/effort max` for a genuinely hard, latency-insensitive design
-problem — and drop it back afterward.
+**Effort:** raise the session to `/effort max` for the brainstorm — this
+is the phase where compute-spent-thinking has the most leverage on the
+eventual diff. Drop the `ultrathink` keyword into the prompt on specific
+high-stakes turns (clarifying-question synthesis, design-shape
+selection) for a per-turn boost on top of the session level. Drop the
+session back to default before Phase 2.
 
 **Output of phase:** spec, plan, review-note on disk, all under
 `.superpowers/` (gitignored, never committed).
@@ -489,7 +489,7 @@ Forces honesty about the call.
 
 | Activity                      | Tier       | `/effort`        | One-off keyword         |
 |-------------------------------|------------|------------------|-------------------------|
-| Brainstorm / spec             | default    | default          | `ultrathink` on key turns |
+| Brainstorm / spec             | default    | `max`            | `ultrathink` on key turns |
 | Plan writing                  | default    | default          | —                       |
 | Review-note distillation      | default    | default          | —                       |
 | Inline execution (mechanical) | default    | `low`            | —                       |
