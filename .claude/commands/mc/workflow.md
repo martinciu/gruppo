@@ -64,12 +64,11 @@ coding work), **`low`** (the cheapest supported level).
 - Subagent / skill frontmatter can set `effort:` to override the
   session level when that subagent or skill is active — useful for SDD
   per-task tiering.
-- Calibration (current default-tier models): lower effort levels often
-  match or exceed the top levels of prior models, while raising effort
-  on routine turns mostly buys over-deliberation. Default is the right
-  session setting for every phase; reach for `ultrathink` per turn
-  before reaching for the dial, and reserve `max` for genuinely hard,
-  latency-insensitive deliberation.
+- Calibration: default is the right session setting for every phase.
+  Raising effort on routine turns mostly buys latency and
+  over-deliberation, not better output, so reach for `ultrathink` per
+  turn before reaching for the dial, and reserve `max` for genuinely
+  hard, latency-insensitive deliberation.
 
 Why three sessions: fresh sessions keep divergent (brainstorm) and
 convergent (review) phases from contaminating each other — different
@@ -185,12 +184,11 @@ The command drives seven steps without stopping in the middle:
 
 **Effort:** keep the session at default effort. Brainstorming is mostly
 interactive clarifying turns, where a session-wide `max` buys latency
-and over-deliberation, not better questions — on current default-tier
-models, default effort already out-reasons prior models' top levels.
-Spend the boost surgically instead: drop the `ultrathink` keyword into
-the specific high-stakes turns (clarifying-question synthesis,
-design-shape selection). Reserve `/effort max` for a genuinely hard,
-latency-insensitive design problem — and drop it back afterward.
+and over-deliberation, not better questions. Spend the boost surgically
+instead: drop the `ultrathink` keyword into the specific high-stakes
+turns (clarifying-question synthesis, design-shape selection). Reserve
+`/effort max` for a genuinely hard, latency-insensitive design
+problem — and drop it back afterward.
 
 **Output of phase:** spec, plan, review-note on disk, all under
 `.superpowers/` (gitignored, never committed).
@@ -320,20 +318,18 @@ It produces a structured report:
 Then it **stops** and asks which findings to apply. Nothing auto-fixes.
 
 **Effort:** the session default is calibrated for coding work and is
-usually enough — on current default-tier models a whole-session `max`
-tends to buy over-deliberation, not catch-rate. For a diff that spans
-many files or carries a long `Replaced by:` list to verify (each
-clause is a per-line verification check), drop `ultrathink` into the
-prompt that invokes `/mc:review`; reserve a session-level bump for
-genuinely hard, latency-insensitive reviews.
+usually enough — a whole-session `max` tends to buy latency and
+over-deliberation, not catch-rate. For a diff that spans many files or
+carries a long `Replaced by:` list to verify (each clause is a per-line
+verification check), drop `ultrathink` into the prompt that invokes
+`/mc:review`; reserve a session-level bump for genuinely hard,
+latency-insensitive reviews.
 
-**Security-surface diffs:** current default-tier models ship
-cybersecurity safety classifiers that can refuse benign
-security-focused review analysis — and their bug-finding gains
-explicitly exclude the domains those classifiers cover. If
-`/mc:review` on a security-heavy diff hits a refusal, re-run the
-review session with an explicit model override (`claude --model opus`)
-instead of re-prompting around it.
+**Security-surface diffs:** some models ship cybersecurity safety
+classifiers that can refuse benign security-focused review analysis. If
+`/mc:review` on a security-heavy diff hits a safety refusal, re-run the
+review session on a different model (`claude --model <other>`) rather
+than re-prompting around the refusal.
 
 ---
 
