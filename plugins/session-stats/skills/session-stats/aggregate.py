@@ -74,24 +74,6 @@ def price_for(model):
     return None
 
 
-# Public Anthropic API rates, USD per million tokens.
-# Verify against current rates at anthropic.com/pricing — these drift.
-PRICES = {
-    "opus":   {"in": 15.0, "out": 75.0, "cw5": 18.75, "cw1": 30.0, "cr": 1.50},
-    "sonnet": {"in":  3.0, "out": 15.0, "cw5":  3.75, "cw1":  6.0, "cr": 0.30},
-    "haiku":  {"in":  1.0, "out":  5.0, "cw5":  1.25, "cw1":  2.0, "cr": 0.10},
-}
-
-
-def family(model):
-    if not model:
-        return None
-    for k in ("opus", "sonnet", "haiku"):
-        if k in model:
-            return k
-    return None
-
-
 def is_real_user_message(record):
     if record.get("type") != "user":
         return False
@@ -316,10 +298,9 @@ def consume(path, per_model, ts_state, per_source=None, source=None):
                 bucket["cw5"] += cw5
                 bucket["cw1"] += cw1
                 bucket["model"] = bucket.get("model") or model
-                # Track cost contribution (Σ over each row's family pricing).
-                fam = family(model)
-                if fam:
-                    p = PRICES[fam]
+                # Track cost contribution (Σ over each row's own rate card).
+                p = price_for(model)
+                if p:
                     bucket["cost"] += (tin/1e6*p["in"] + tout/1e6*p["out"]
                                      + tcr/1e6*p["cr"] + cw5/1e6*p["cw5"]
                                      + cw1/1e6*p["cw1"])
@@ -385,10 +366,9 @@ def main():
     total_cost = 0.0
     totals = {"in": 0, "out": 0, "cr": 0, "cw5": 0, "cw1": 0, "msgs": 0}
     for model, e in sorted(per_model.items()):
-        fam = family(model)
+        p = price_for(model)
         cost = 0.0
-        if fam:
-            p = PRICES[fam]
+        if p:
             cost = (e["in"]  / 1e6 * p["in"]  + e["out"] / 1e6 * p["out"]
                   + e["cr"]  / 1e6 * p["cr"]  + e["cw5"] / 1e6 * p["cw5"]
                   + e["cw1"] / 1e6 * p["cw1"])

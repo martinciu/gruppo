@@ -10,9 +10,7 @@ import tempfile
 from collections import defaultdict
 
 from aggregate import (
-    PRICES,
     consume,
-    family,
     fmt_cost,
     fmt_duration,
     fmt_model,
@@ -181,8 +179,8 @@ def test_consume_multi_model():
 
         # The per-source bucket cost must use *each row's* family pricing,
         # not a single mixed rate. Compute the expected directly here.
-        op = PRICES["opus"]
-        sn = PRICES["sonnet"]
+        op = price_for("claude-opus-4-7")
+        sn = price_for("claude-sonnet-4-6")
         expect = (300/1e6 * op["in"] + 3000/1e6 * op["out"]
                   + 120000/1e6 * op["cr"] + 8000/1e6 * op["cw1"]
                   + 50/1e6 * sn["in"] + 500/1e6 * sn["out"]
@@ -194,15 +192,29 @@ def test_consume_multi_model():
         os.unlink(path)
 
 
-def test_family_handles_bare_and_versioned():
-    # Both bare strings (sometimes seen on background/summarization rows)
-    # and versioned ones must classify into the same family bucket.
-    check("family claude-opus-4-7", family("claude-opus-4-7"), "opus")
-    check("family claude-sonnet-4-6", family("claude-sonnet-4-6"), "sonnet")
-    check("family bare sonnet", family("sonnet"), "sonnet")
-    check("family bare haiku", family("haiku"), "haiku")
-    check("family unknown", family("gpt-4"), None)
-    check("family None", family(None), None)
+def test_consume_fable_costs_nonzero():
+    # Regression for issue #75: a Fable row must contribute cost
+    # (was silently $0.00 because family() didn't know "fable").
+    path = _write_jsonl([
+        _assistant_record("claude-fable-5", "2026-08-05T10:00:00Z",
+                          tin=1000, tout=420000),
+    ])
+    try:
+        per_model = defaultdict(lambda: {"in": 0, "out": 0, "cr": 0,
+                                         "cw5": 0, "cw1": 0, "msgs": 0})
+        per_source = {"controller": {"in": 0, "out": 0, "cr": 0,
+                                     "cw5": 0, "cw1": 0, "msgs": 0,
+                                     "cost": 0.0, "model": None},
+                      "subagent":   {"in": 0, "out": 0, "cr": 0,
+                                     "cw5": 0, "cw1": 0, "msgs": 0,
+                                     "cost": 0.0, "model": None}}
+        ts = {"first": None, "last": None}
+        consume(path, per_model, ts, per_source, "controller")
+        expect = 1000/1e6 * 10.0 + 420000/1e6 * 50.0
+        got = per_source["controller"]["cost"]
+        assert abs(got - expect) < 1e-9, f"fable cost: got {got}, want {expect}"
+    finally:
+        os.unlink(path)
 
 
 def test_price_for():
@@ -250,7 +262,7 @@ def main():
         test_fmt_rate,
         test_fmt_timestamp,
         test_consume_multi_model,
-        test_family_handles_bare_and_versioned,
+        test_consume_fable_costs_nonzero,
         test_price_for,
         test_price_for_derived_cache_rates,
     ]
