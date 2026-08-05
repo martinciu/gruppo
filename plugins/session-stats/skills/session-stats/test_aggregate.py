@@ -17,6 +17,7 @@ from aggregate import (
     fmt_rate,
     fmt_timestamp,
     fmt_tokens,
+    fmt_unknown_warning,
     fmt_working,
     price_for,
 )
@@ -119,6 +120,14 @@ def test_fmt_timestamp():
         "fmt_timestamp +offset",
         fmt_timestamp("2026-05-03T14:23:45+00:00"),
         "2026-05-03 14:23 UTC",
+    )
+
+
+def test_fmt_unknown_warning():
+    check(
+        "fmt_unknown_warning",
+        fmt_unknown_warning("x-y"),
+        "⚠ unknown model 'x-y' — priced at $0.00; total cost is a floor",
     )
 
 
@@ -261,6 +270,7 @@ def main():
         test_fmt_working,
         test_fmt_rate,
         test_fmt_timestamp,
+        test_fmt_unknown_warning,
         test_consume_multi_model,
         test_consume_fable_costs_nonzero,
         test_price_for,

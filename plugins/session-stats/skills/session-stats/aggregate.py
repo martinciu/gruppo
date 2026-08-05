@@ -196,6 +196,11 @@ def fmt_timestamp(s):
     return dt.strftime("%Y-%m-%d %H:%M UTC")
 
 
+def fmt_unknown_warning(model):
+    return (f"⚠ unknown model '{model}' — priced at $0.00; "
+            "total cost is a floor")
+
+
 def fmt_model(model):
     if not model or model == "unknown":
         return model or "unknown"
@@ -364,6 +369,7 @@ def main():
     print("-" * len(header))
 
     total_cost = 0.0
+    unknown_models = set()
     totals = {"in": 0, "out": 0, "cr": 0, "cw5": 0, "cw1": 0, "msgs": 0}
     for model, e in sorted(per_model.items()):
         p = price_for(model)
@@ -372,6 +378,8 @@ def main():
             cost = (e["in"]  / 1e6 * p["in"]  + e["out"] / 1e6 * p["out"]
                   + e["cr"]  / 1e6 * p["cr"]  + e["cw5"] / 1e6 * p["cw5"]
                   + e["cw1"] / 1e6 * p["cw1"])
+        else:
+            unknown_models.add(model)
         total_cost += cost
         for k in ("in", "out", "cr", "cw5", "cw1", "msgs"):
             totals[k] += e[k]
@@ -408,6 +416,8 @@ def main():
     print(f"Total cost (USD, public rates): {fmt_cost(total_cost)}")
     print(f"Effective rate: {fmt_rate(total_cost, working_seconds)} "
           f"(cost ÷ working time, includes parallel subagent compute)")
+    for m in sorted(unknown_models):
+        print(fmt_unknown_warning(m))
     return 0
 
 
