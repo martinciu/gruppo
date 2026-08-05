@@ -1,6 +1,6 @@
 ---
 name: session-stats
-description: Use when the user asks about THIS Claude Code session's token, cost, or runtime metrics — cost so far, tokens burned, runtime/elapsed/working time, per-model split (Opus/Sonnet/Haiku), or controller-vs-subagent breakdown. Fires whether they want the numbers shown directly ("how much has this cost", "how long has this been running", "what's my token usage") or formatted to embed elsewhere (PR body, commit message, changelog, Slack, standup, status update — e.g. "give me a markdown block of session stats", "drop the cost into the PR description"). Trigger on intent, not verb — show, share, include, append, post, drop, paste, give me all qualify. Do NOT trigger for lines-of-code or git-diff stats (this skill is about API spend, not code volume), Anthropic API list pricing, console.anthropic.com / org billing dashboards, plan-tier comparisons (Pro vs Max), prompt benchmarking, or sessions in a different working directory.
+description: Use when the user asks about THIS Claude Code session's token, cost, or runtime metrics — cost so far, tokens burned, runtime/elapsed/working time, per-model split (Fable/Opus/Sonnet/Haiku), or controller-vs-subagent breakdown. Fires whether they want the numbers shown directly ("how much has this cost", "how long has this been running", "what's my token usage") or formatted to embed elsewhere (PR body, commit message, changelog, Slack, standup, status update — e.g. "give me a markdown block of session stats", "drop the cost into the PR description"). Trigger on intent, not verb — show, share, include, append, post, drop, paste, give me all qualify. Do NOT trigger for lines-of-code or git-diff stats (this skill is about API spend, not code volume), Anthropic API list pricing, console.anthropic.com / org billing dashboards, plan-tier comparisons (Pro vs Max), prompt benchmarking, or sessions in a different working directory.
 ---
 
 # Session Stats
@@ -131,10 +131,11 @@ reads.
   them to run from the original cwd, or set `SESSION_FILE` explicitly.
 - **Sessions with only a controller (no subagents).** The `subagents/`
   directory may not exist; the script handles that.
-- **Unknown model strings.** A future Sonnet/Opus version the script
-  doesn't recognize falls through `family()` and prices that row at $0.00.
-  Tokens still count toward totals — flag the row to the user if it
-  appears.
+- **Unknown model strings.** A model ID the pricing table doesn't
+  recognize prices at $0.00, and the script prints a
+  `⚠ unknown model …` warning after the totals. Tokens still count
+  toward totals — relay the warning to the user: the reported total is
+  a floor, not an estimate.
 - **Multiple sessions in the same project.** The script picks the most
   recently modified `.jsonl`. To target a different one, list
   `~/.claude/projects/<slug>/*.jsonl` and pass the chosen path via

@@ -10,16 +10,16 @@ import tempfile
 from collections import defaultdict
 
 from aggregate import (
-    PRICES,
     consume,
-    family,
     fmt_cost,
     fmt_duration,
     fmt_model,
     fmt_rate,
     fmt_timestamp,
     fmt_tokens,
+    fmt_unknown_warning,
     fmt_working,
+    price_for,
 )
 
 
@@ -65,6 +65,8 @@ def test_fmt_model():
     cases = [
         ("claude-opus-4-7", "Opus 4.7"),
         ("claude-sonnet-4-6", "Sonnet 4.6"),
+        ("claude-fable-5", "Fable 5"),
+        ("claude-mythos-5", "Mythos 5"),
         ("claude-haiku-4-5-20251001", "Haiku 4.5 (2025-10-01)"),
         ("claude-3-5-sonnet-20241022", "Sonnet 3.5 (2024-10-22)"),
         ("claude-sonnet-4-5-1m", "Sonnet 4.5 (1M ctx)"),
@@ -120,6 +122,14 @@ def test_fmt_timestamp():
         "fmt_timestamp +offset",
         fmt_timestamp("2026-05-03T14:23:45+00:00"),
         "2026-05-03 14:23 UTC",
+    )
+
+
+def test_fmt_unknown_warning():
+    check(
+        "fmt_unknown_warning",
+        fmt_unknown_warning("x-y"),
+        "⚠ unknown model 'x-y' — priced at $0.00; total cost is a floor",
     )
 
 
@@ -180,8 +190,8 @@ def test_consume_multi_model():
 
         # The per-source bucket cost must use *each row's* family pricing,
         # not a single mixed rate. Compute the expected directly here.
-        op = PRICES["opus"]
-        sn = PRICES["sonnet"]
+        op = price_for("claude-opus-4-7")
+        sn = price_for("claude-sonnet-4-6")
         expect = (300/1e6 * op["in"] + 3000/1e6 * op["out"]
                   + 120000/1e6 * op["cr"] + 8000/1e6 * op["cw1"]
                   + 50/1e6 * sn["in"] + 500/1e6 * sn["out"]
@@ -193,15 +203,64 @@ def test_consume_multi_model():
         os.unlink(path)
 
 
-def test_family_handles_bare_and_versioned():
-    # Both bare strings (sometimes seen on background/summarization rows)
-    # and versioned ones must classify into the same family bucket.
-    check("family claude-opus-4-7", family("claude-opus-4-7"), "opus")
-    check("family claude-sonnet-4-6", family("claude-sonnet-4-6"), "sonnet")
-    check("family bare sonnet", family("sonnet"), "sonnet")
-    check("family bare haiku", family("haiku"), "haiku")
-    check("family unknown", family("gpt-4"), None)
-    check("family None", family(None), None)
+def test_consume_fable_costs_nonzero():
+    # Regression for issue #75: a Fable row must contribute cost
+    # (was silently $0.00 because family() didn't know "fable").
+    path = _write_jsonl([
+        _assistant_record("claude-fable-5", "2026-08-05T10:00:00Z",
+                          tin=1000, tout=420000),
+    ])
+    try:
+        per_model = defaultdict(lambda: {"in": 0, "out": 0, "cr": 0,
+                                         "cw5": 0, "cw1": 0, "msgs": 0})
+        per_source = {"controller": {"in": 0, "out": 0, "cr": 0,
+                                     "cw5": 0, "cw1": 0, "msgs": 0,
+                                     "cost": 0.0, "model": None},
+                      "subagent":   {"in": 0, "out": 0, "cr": 0,
+                                     "cw5": 0, "cw1": 0, "msgs": 0,
+                                     "cost": 0.0, "model": None}}
+        ts = {"first": None, "last": None}
+        consume(path, per_model, ts, per_source, "controller")
+        expect = 1000/1e6 * 10.0 + 420000/1e6 * 50.0
+        got = per_source["controller"]["cost"]
+        assert abs(got - expect) < 1e-9, f"fable cost: got {got}, want {expect}"
+    finally:
+        os.unlink(path)
+
+
+def test_price_for():
+    # Legacy Opus (4.1 / 4.0 / dated 4.0) keeps the 4.1-era rate.
+    for m in ("claude-opus-4-1", "claude-opus-4-1-20250805",
+              "claude-opus-4-20250514"):
+        p = price_for(m)
+        check(f"price_for({m}) in", p["in"], 15.0)
+        check(f"price_for({m}) out", p["out"], 75.0)
+    # Current Opus — including 4.5 and its dated snapshot — is $5/$25.
+    for m in ("claude-opus-5", "claude-opus-4-8", "claude-opus-4-5",
+              "claude-opus-4-5-20251101"):
+        p = price_for(m)
+        check(f"price_for({m}) in", p["in"], 5.0)
+        check(f"price_for({m}) out", p["out"], 25.0)
+    # Fable / Mythos — the $0.00 regression from issue #75.
+    for m in ("claude-fable-5", "claude-mythos-5"):
+        p = price_for(m)
+        check(f"price_for({m}) in", p["in"], 10.0)
+        check(f"price_for({m}) out", p["out"], 50.0)
+    # Suffixed IDs match via prefix; bare family strings via fallback.
+    check("price_for sonnet-1m in", price_for("claude-sonnet-4-5-1m")["in"], 3.0)
+    check("price_for bare sonnet in", price_for("sonnet")["in"], 3.0)
+    check("price_for bare haiku out", price_for("haiku")["out"], 5.0)
+    # Unknown models return None.
+    for m in ("gpt-4", "", None):
+        check(f"price_for({m!r})", price_for(m), None)
+
+
+def test_price_for_derived_cache_rates():
+    # Cache rates come from the base input rate via fixed multipliers.
+    p = price_for("claude-opus-5")
+    check("cr = 0.10x in", p["cr"], 5.0 * 0.10)
+    check("cw5 = 1.25x in", p["cw5"], 5.0 * 1.25)
+    check("cw1 = 2x in", p["cw1"], 5.0 * 2.0)
 
 
 def main():
@@ -213,8 +272,11 @@ def main():
         test_fmt_working,
         test_fmt_rate,
         test_fmt_timestamp,
+        test_fmt_unknown_warning,
         test_consume_multi_model,
-        test_family_handles_bare_and_versioned,
+        test_consume_fable_costs_nonzero,
+        test_price_for,
+        test_price_for_derived_cache_rates,
     ]
     for t in tests:
         t()

@@ -17,21 +17,60 @@ import sys
 from collections import defaultdict
 from datetime import datetime
 
-# Public Anthropic API rates, USD per million tokens.
-# Verify against current rates at anthropic.com/pricing — these drift.
-PRICES = {
-    "opus":   {"in": 15.0, "out": 75.0, "cw5": 18.75, "cw1": 30.0, "cr": 1.50},
-    "sonnet": {"in":  3.0, "out": 15.0, "cw5":  3.75, "cw1":  6.0, "cr": 0.30},
-    "haiku":  {"in":  1.0, "out":  5.0, "cw5":  1.25, "cw1":  2.0, "cr": 0.10},
+# Public Anthropic API rates, USD per million tokens (base input/output).
+# Verified against platform.claude.com/docs/en/about-claude/pricing on
+# 2026-08-05 — these drift; re-check when adding models.
+#
+# Cache rates are uniform multiples of base input across all models, so
+# they are derived, not listed.
+MULT = {"cr": 0.10, "cw5": 1.25, "cw1": 2.0}
+
+# (model-id prefix, input $/MTok, output $/MTok) — most-specific first,
+# first match wins. Keep legacy entries above their family umbrella.
+BASE_PRICES = [
+    ("claude-opus-4-1",    15.0, 75.0),  # legacy (deprecated)
+    ("claude-opus-4-0",    15.0, 75.0),  # legacy (retired)
+    ("claude-opus-4-2025", 15.0, 75.0),  # legacy dated (claude-opus-4-20250514)
+    ("claude-fable",  10.0, 50.0),
+    ("claude-mythos", 10.0, 50.0),
+    ("claude-opus",    5.0, 25.0),
+    ("claude-sonnet",  3.0, 15.0),
+    ("claude-haiku",   1.0,  5.0),
+]
+
+# Last-resort fallback for bare model strings ("sonnet" on background
+# rows): family keyword -> current family base rate. Insertion order is
+# the match order.
+FAMILY_FALLBACK = {
+    "fable":  (10.0, 50.0),
+    "mythos": (10.0, 50.0),
+    "opus":   ( 5.0, 25.0),
+    "sonnet": ( 3.0, 15.0),
+    "haiku":  ( 1.0,  5.0),
 }
 
 
-def family(model):
+def _rates(base_in, base_out):
+    return {"in": base_in, "out": base_out,
+            "cr":  base_in * MULT["cr"],
+            "cw5": base_in * MULT["cw5"],
+            "cw1": base_in * MULT["cw1"]}
+
+
+def price_for(model):
+    """Rate card for a model ID: {in, out, cr, cw5, cw1} USD/MTok, or None.
+
+    Longest-prefix match against BASE_PRICES (list order encodes
+    specificity), then family-keyword fallback for bare strings.
+    """
     if not model:
         return None
-    for k in ("opus", "sonnet", "haiku"):
-        if k in model:
-            return k
+    for prefix, base_in, base_out in BASE_PRICES:
+        if model.startswith(prefix):
+            return _rates(base_in, base_out)
+    for key, (base_in, base_out) in FAMILY_FALLBACK.items():
+        if key in model:
+            return _rates(base_in, base_out)
     return None
 
 
@@ -157,6 +196,11 @@ def fmt_timestamp(s):
     return dt.strftime("%Y-%m-%d %H:%M UTC")
 
 
+def fmt_unknown_warning(model):
+    return (f"⚠ unknown model '{model}' — priced at $0.00; "
+            "total cost is a floor")
+
+
 def fmt_model(model):
     if not model or model == "unknown":
         return model or "unknown"
@@ -170,7 +214,8 @@ def fmt_model(model):
     if parts and len(parts[-1]) >= 2 and parts[-1][-1] in "mk" and parts[-1][:-1].isdigit():
         context = parts[-1]
         parts = parts[:-1]
-    families = {"opus": "Opus", "sonnet": "Sonnet", "haiku": "Haiku"}
+    families = {"opus": "Opus", "sonnet": "Sonnet", "haiku": "Haiku",
+                "fable": "Fable", "mythos": "Mythos"}
     family_idx = next((i for i, p in enumerate(parts) if p in families), None)
     if family_idx is None:
         return model.replace("claude-", "")
@@ -259,10 +304,9 @@ def consume(path, per_model, ts_state, per_source=None, source=None):
                 bucket["cw5"] += cw5
                 bucket["cw1"] += cw1
                 bucket["model"] = bucket.get("model") or model
-                # Track cost contribution (Σ over each row's family pricing).
-                fam = family(model)
-                if fam:
-                    p = PRICES[fam]
+                # Track cost contribution (Σ over each row's own rate card).
+                p = price_for(model)
+                if p:
                     bucket["cost"] += (tin/1e6*p["in"] + tout/1e6*p["out"]
                                      + tcr/1e6*p["cr"] + cw5/1e6*p["cw5"]
                                      + cw1/1e6*p["cw1"])
@@ -326,15 +370,17 @@ def main():
     print("-" * len(header))
 
     total_cost = 0.0
+    unknown_models = set()
     totals = {"in": 0, "out": 0, "cr": 0, "cw5": 0, "cw1": 0, "msgs": 0}
     for model, e in sorted(per_model.items()):
-        fam = family(model)
+        p = price_for(model)
         cost = 0.0
-        if fam:
-            p = PRICES[fam]
+        if p:
             cost = (e["in"]  / 1e6 * p["in"]  + e["out"] / 1e6 * p["out"]
                   + e["cr"]  / 1e6 * p["cr"]  + e["cw5"] / 1e6 * p["cw5"]
                   + e["cw1"] / 1e6 * p["cw1"])
+        else:
+            unknown_models.add(model)
         total_cost += cost
         for k in ("in", "out", "cr", "cw5", "cw1", "msgs"):
             totals[k] += e[k]
@@ -371,6 +417,8 @@ def main():
     print(f"Total cost (USD, public rates): {fmt_cost(total_cost)}")
     print(f"Effective rate: {fmt_rate(total_cost, working_seconds)} "
           f"(cost ÷ working time, includes parallel subagent compute)")
+    for m in sorted(unknown_models):
+        print(fmt_unknown_warning(m))
     return 0
 
 
