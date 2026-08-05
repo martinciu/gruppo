@@ -214,7 +214,8 @@ def fmt_model(model):
     if parts and len(parts[-1]) >= 2 and parts[-1][-1] in "mk" and parts[-1][:-1].isdigit():
         context = parts[-1]
         parts = parts[:-1]
-    families = {"opus": "Opus", "sonnet": "Sonnet", "haiku": "Haiku"}
+    families = {"opus": "Opus", "sonnet": "Sonnet", "haiku": "Haiku",
+                "fable": "Fable", "mythos": "Mythos"}
     family_idx = next((i for i, p in enumerate(parts) if p in families), None)
     if family_idx is None:
         return model.replace("claude-", "")

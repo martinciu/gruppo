@@ -65,6 +65,8 @@ def test_fmt_model():
     cases = [
         ("claude-opus-4-7", "Opus 4.7"),
         ("claude-sonnet-4-6", "Sonnet 4.6"),
+        ("claude-fable-5", "Fable 5"),
+        ("claude-mythos-5", "Mythos 5"),
         ("claude-haiku-4-5-20251001", "Haiku 4.5 (2025-10-01)"),
         ("claude-3-5-sonnet-20241022", "Sonnet 3.5 (2024-10-22)"),
         ("claude-sonnet-4-5-1m", "Sonnet 4.5 (1M ctx)"),
