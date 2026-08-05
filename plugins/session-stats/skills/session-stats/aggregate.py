@@ -17,6 +17,63 @@ import sys
 from collections import defaultdict
 from datetime import datetime
 
+# Public Anthropic API rates, USD per million tokens (base input/output).
+# Verified against platform.claude.com/docs/en/about-claude/pricing on
+# 2026-08-05 — these drift; re-check when adding models.
+#
+# Cache rates are uniform multiples of base input across all models, so
+# they are derived, not listed.
+MULT = {"cr": 0.10, "cw5": 1.25, "cw1": 2.0}
+
+# (model-id prefix, input $/MTok, output $/MTok) — most-specific first,
+# first match wins. Keep legacy entries above their family umbrella.
+BASE_PRICES = [
+    ("claude-opus-4-1",    15.0, 75.0),  # legacy (deprecated)
+    ("claude-opus-4-0",    15.0, 75.0),  # legacy (retired)
+    ("claude-opus-4-2025", 15.0, 75.0),  # legacy dated (claude-opus-4-20250514)
+    ("claude-fable",  10.0, 50.0),
+    ("claude-mythos", 10.0, 50.0),
+    ("claude-opus",    5.0, 25.0),
+    ("claude-sonnet",  3.0, 15.0),
+    ("claude-haiku",   1.0,  5.0),
+]
+
+# Last-resort fallback for bare model strings ("sonnet" on background
+# rows): family keyword -> current family base rate. Insertion order is
+# the match order.
+FAMILY_FALLBACK = {
+    "fable":  (10.0, 50.0),
+    "mythos": (10.0, 50.0),
+    "opus":   ( 5.0, 25.0),
+    "sonnet": ( 3.0, 15.0),
+    "haiku":  ( 1.0,  5.0),
+}
+
+
+def _rates(base_in, base_out):
+    return {"in": base_in, "out": base_out,
+            "cr":  base_in * MULT["cr"],
+            "cw5": base_in * MULT["cw5"],
+            "cw1": base_in * MULT["cw1"]}
+
+
+def price_for(model):
+    """Rate card for a model ID: {in, out, cr, cw5, cw1} USD/MTok, or None.
+
+    Longest-prefix match against BASE_PRICES (list order encodes
+    specificity), then family-keyword fallback for bare strings.
+    """
+    if not model:
+        return None
+    for prefix, base_in, base_out in BASE_PRICES:
+        if model.startswith(prefix):
+            return _rates(base_in, base_out)
+    for key, (base_in, base_out) in FAMILY_FALLBACK.items():
+        if key in model:
+            return _rates(base_in, base_out)
+    return None
+
+
 # Public Anthropic API rates, USD per million tokens.
 # Verify against current rates at anthropic.com/pricing — these drift.
 PRICES = {

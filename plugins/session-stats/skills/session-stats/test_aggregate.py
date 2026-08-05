@@ -20,6 +20,7 @@ from aggregate import (
     fmt_timestamp,
     fmt_tokens,
     fmt_working,
+    price_for,
 )
 
 
@@ -204,6 +205,41 @@ def test_family_handles_bare_and_versioned():
     check("family None", family(None), None)
 
 
+def test_price_for():
+    # Legacy Opus (4.1 / 4.0 / dated 4.0) keeps the 4.1-era rate.
+    for m in ("claude-opus-4-1", "claude-opus-4-1-20250805",
+              "claude-opus-4-20250514"):
+        p = price_for(m)
+        check(f"price_for({m}) in", p["in"], 15.0)
+        check(f"price_for({m}) out", p["out"], 75.0)
+    # Current Opus — including 4.5 and its dated snapshot — is $5/$25.
+    for m in ("claude-opus-5", "claude-opus-4-8", "claude-opus-4-5",
+              "claude-opus-4-5-20251101"):
+        p = price_for(m)
+        check(f"price_for({m}) in", p["in"], 5.0)
+        check(f"price_for({m}) out", p["out"], 25.0)
+    # Fable / Mythos — the $0.00 regression from issue #75.
+    for m in ("claude-fable-5", "claude-mythos-5"):
+        p = price_for(m)
+        check(f"price_for({m}) in", p["in"], 10.0)
+        check(f"price_for({m}) out", p["out"], 50.0)
+    # Suffixed IDs match via prefix; bare family strings via fallback.
+    check("price_for sonnet-1m in", price_for("claude-sonnet-4-5-1m")["in"], 3.0)
+    check("price_for bare sonnet in", price_for("sonnet")["in"], 3.0)
+    check("price_for bare haiku out", price_for("haiku")["out"], 5.0)
+    # Unknown models return None.
+    for m in ("gpt-4", "", None):
+        check(f"price_for({m!r})", price_for(m), None)
+
+
+def test_price_for_derived_cache_rates():
+    # Cache rates come from the base input rate via fixed multipliers.
+    p = price_for("claude-opus-5")
+    check("cr = 0.10x in", p["cr"], 5.0 * 0.10)
+    check("cw5 = 1.25x in", p["cw5"], 5.0 * 1.25)
+    check("cw1 = 2x in", p["cw1"], 5.0 * 2.0)
+
+
 def main():
     tests = [
         test_fmt_tokens,
@@ -215,6 +251,8 @@ def main():
         test_fmt_timestamp,
         test_consume_multi_model,
         test_family_handles_bare_and_versioned,
+        test_price_for,
+        test_price_for_derived_cache_rates,
     ]
     for t in tests:
         t()
