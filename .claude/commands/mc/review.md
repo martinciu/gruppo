@@ -369,9 +369,14 @@ nothing here is written into the repo.
     # would delete the human's own notes.
     hunk session comment clear "$sid" --yes >/dev/null
 
-    # One batch. Skip entirely when `.comments` is empty.
-    jq -c '{comments}' "$mapped_json" \
-      | hunk session comment apply "$sid" --stdin --json
+    # One batch. The guard is load-bearing: `apply` with an empty list is an
+    # error ("Session comment apply expected at least one comment.", exit 1),
+    # not a no-op — so a review with zero findings, or one where every finding
+    # was unmapped, would otherwise end on a spurious error line.
+    if [ "$(jq '.comments | length' "$mapped_json")" -gt 0 ]; then
+      jq -c '{comments}' "$mapped_json" \
+        | hunk session comment apply "$sid" --stdin --json
+    fi
 
 Do **not** pass `--focus`. The batch lands when the review finishes, which
 may be long after the human last looked; focusing would yank their viewport
