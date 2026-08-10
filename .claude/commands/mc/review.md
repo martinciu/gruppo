@@ -240,7 +240,7 @@ another window, another tmux server, or no tmux at all.
     sid=$(hunk session list --json 2>/dev/null \
       | jq -r --arg r "$repo" \
           '[.sessions[] | select(.repoRoot == $r)]
-           | sort_by(.launchedAt) | last | .sessionId // empty')
+           | sort_by(.launchedAt, .sessionId) | last | .sessionId // empty')
     [ -n "$sid" ] || skip_hunk=1
 
 A missing `hunk` binary, a dead daemon, and a repo mismatch all leave
@@ -251,7 +251,9 @@ guarded block **never** blocks the review: log the error, continue.
 Resolving an explicit `$sid` (rather than passing `--repo`) is deliberate:
 with two Hunk windows on one repo, `--repo` refuses with "Multiple active
 sessions match ...; specify sessionId instead". Most-recently-launched
-wins.
+wins, but sessions opened in quick succession can share a `launchedAt`,
+so the `.sessionId` tiebreak keeps the pick deterministic — the footer's
+`(session <id>)` tells the human which window received the notes.
 
 ### Finding → note mapping
 
