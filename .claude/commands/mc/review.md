@@ -356,9 +356,9 @@ $review[0].review.files as $files
 ### Apply
 
 `$findings_json` and `$map_jq` are scratch files you write for this step
-(your findings, and the program above verbatim); `$review_json` and
-`$mapped_json` are intermediates. Put all four in a scratch directory —
-nothing here is written into the repo.
+(your findings, and the program above verbatim); `$review_json`,
+`$mapped_json`, and `$applied_json` are intermediates. Put all five in a
+scratch directory — nothing here is written into the repo.
 
     hunk session review "$sid" --json > "$review_json"
     jq --slurpfile review "$review_json" -f "$map_jq" "$findings_json" > "$mapped_json"
@@ -375,8 +375,14 @@ nothing here is written into the repo.
     # was unmapped, would otherwise end on a spurious error line.
     if [ "$(jq '.comments | length' "$mapped_json")" -gt 0 ]; then
       jq -c '{comments}' "$mapped_json" \
-        | hunk session comment apply "$sid" --stdin --json
+        | hunk session comment apply "$sid" --stdin --json > "$applied_json"
     fi
+
+Verified: on any bad item — a line the diff moved off since `$review_json`
+was captured — `comment apply` exits nonzero, prints a plain-text error,
+and applies nothing; no JSON reaches stdout and `$applied_json` stays
+empty. The whole batch is atomic, so the footer below must read
+`$applied_json`, not `$mapped_json` — see the next section.
 
 Do **not** pass `--focus`. The batch lands when the review finishes, which
 may be long after the human last looked; focusing would yank their viewport
@@ -389,16 +395,34 @@ the previous run's notes.
 
 Print a short footer after the report:
 
-    mirrored 6/7 findings into Hunk (session a787990a)
+    mirrored 6/8 findings into Hunk (session a787990a)
       #2 snapped to hunk 1 (cited line 90 is outside any hunk)
-      #3 not mirrored — src/does-not-exist.ts is not in the loaded diff
+      #3 not mirrored — src/does-not-exist.ts: file not in loaded diff
+      #5 not mirrored — src/other.ts: file has no hunks in loaded diff
       notes are hidden — press `a` in Hunk to show them
 
-Emit one line per entry in `.snapped` and `.unmapped`. The last line
-appears **only** when `hunk session review "$sid" --json` reports
-`.review.showAgentNotes == false` — a fresh `hunk diff` hides agent notes,
-applying a note does not reveal them, and there is no CLI toggle, so
-without this hint the first use looks broken.
+The numerator is `.result.applied | length` from `$applied_json`, never a
+count derived from `$mapped_json` — `comment apply` validates the batch
+atomically, so a diff that moved between mapping and apply drops every
+note, and only the apply result reflects what actually landed. A
+non-empty `$mapped_json` batch with an empty `$applied_json` is that
+failure: report `mirrored 0/N — batch rejected, diff changed since
+mapping` instead of printing the mapped count. When the batch sent to
+`comment apply` was itself empty (the guard above stayed false), the
+footer also reports 0 mirrored, with no rejection line — there was
+nothing to send.
+
+Emit one line per entry in `.snapped` and `.unmapped`; each `.unmapped`
+line echoes that entry's `reason` field verbatim, so "file not in loaded
+diff" (the Hunk session is on a different diff range) and "file has no
+hunks in loaded diff" (file is loaded, but the finding cites unchanged
+code) read as the distinct problems they are.
+
+The last line appears **only** when `$review_json` — captured before
+`clear`/`apply` ran — reports `.review.showAgentNotes == false`. A fresh
+`hunk diff` hides agent notes and applying one does not reveal them, so
+the pre-apply capture stays accurate; there is no CLI toggle, and without
+this hint the first use looks broken.
 
 Hunk renders notes in **diff order** while the report is severity-ordered,
 so scrolling top-to-bottom may reach #7 before #2; the `#N` prefix is the
