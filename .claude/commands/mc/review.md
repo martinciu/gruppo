@@ -266,7 +266,7 @@ The report format needs no changes — every finding already carries a
 | `newLine` / `oldLine` / `hunk` | exactly one — `newLine` by default, `oldLine` when the finding is about removed code, `hunk` when snapping (below) |
 | `summary` | `#<N> <severity emoji> [<origin>] <title>` — the **global report number**, so a later "apply 1, 3, 5" still resolves |
 | `rationale` | the `Observed:` / `Expected:` pair already written for the child bead |
-| `author` | `mc:review` |
+| `author` | `mc:review` — renders in the note header and enables `comment list --type agent` filtering |
 
 `comment apply` validates that the target line falls **inside a diff
 hunk**, not merely that the file is loaded — and it validates the whole
@@ -365,7 +365,8 @@ scratch directory — nothing here is written into the repo.
     hunk session review "$sid" --json > "$review_json"
     jq --slurpfile review "$review_json" -f "$map_jq" "$findings_json" > "$mapped_json"
 
-    # Idempotency: bare `clear` drops prior agent notes only. Verified:
+    # Idempotency: bare `clear` removes all agent notes in the session
+    # (no --author filter, so another tool's notes go too). Verified:
     # with a human TUI note present it reports removedUserNoteCount 0 and
     # leaves that note rendered. NEVER pass --include-user or --all — those
     # would delete the human's own notes.
