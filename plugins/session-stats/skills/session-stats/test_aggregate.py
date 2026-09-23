@@ -246,9 +246,18 @@ def test_price_for():
         p = price_for(m)
         check(f"price_for({m}) in", p["in"], 10.0)
         check(f"price_for({m}) out", p["out"], 50.0)
-    # Suffixed IDs match via prefix; bare family strings via fallback.
+    # Sonnet 5 is $2/$10; Sonnet 4.x keeps $3/$15.
+    check("price_for sonnet-5 in", price_for("claude-sonnet-5")["in"], 2.0)
+    check("price_for sonnet-5 out", price_for("claude-sonnet-5")["out"], 10.0)
+    for m in ("claude-sonnet-4-6", "claude-sonnet-4-5"):
+        check(f"price_for({m}) in", price_for(m)["in"], 3.0)
+    # Suffixed IDs match via prefix; bare family strings resolve to the
+    # family's current model.
     check("price_for sonnet-1m in", price_for("claude-sonnet-4-5-1m")["in"], 3.0)
-    check("price_for bare sonnet in", price_for("sonnet")["in"], 3.0)
+    check("price_for bare sonnet in", price_for("sonnet")["in"], 2.0)
+    check("price_for bare opus in", price_for("opus")["in"], 4.0)
+    check("price_for bare opus cr", price_for("opus")["cr"], 0.20)
+    check("price_for bare fable cr", price_for("fable")["cr"], 0.25)
     check("price_for bare haiku out", price_for("haiku")["out"], 5.0)
     # Unknown models return None.
     for m in ("gpt-4", "", None):
@@ -261,6 +270,27 @@ def test_price_for_derived_cache_rates():
     check("cr = 0.10x in", p["cr"], 5.0 * 0.10)
     check("cw5 = 1.25x in", p["cw5"], 5.0 * 1.25)
     check("cw1 = 2x in", p["cw1"], 5.0 * 2.0)
+
+
+def test_price_for_cache_read_overrides():
+    # Issue #80: Opus 5.5 is $4/$20 with cache reads at 0.05x, not 0.10x.
+    p = price_for("claude-opus-5-5")
+    check("opus-5-5 in", p["in"], 4.0)
+    check("opus-5-5 out", p["out"], 20.0)
+    check("opus-5-5 cr", p["cr"], 0.20)
+    check("opus-5-5 cw5", p["cw5"], 5.0)
+    check("opus-5-5 cw1", p["cw1"], 8.0)
+    # Fable / Mythos 5.1 read cache at 0.025x.
+    for m in ("claude-fable-5-1", "claude-mythos-5-1"):
+        p = price_for(m)
+        check(f"{m} in", p["in"], 10.0)
+        check(f"{m} cr", p["cr"], 0.25)
+        check(f"{m} cw5", p["cw5"], 12.5)
+    # The point releases must not leak into their predecessors.
+    check("opus-5 in", price_for("claude-opus-5")["in"], 5.0)
+    check("opus-5 cr", price_for("claude-opus-5")["cr"], 0.50)
+    check("fable-5 cr", price_for("claude-fable-5")["cr"], 1.0)
+    check("mythos-5 cr", price_for("claude-mythos-5")["cr"], 1.0)
 
 
 def main():
@@ -277,6 +307,7 @@ def main():
         test_consume_fable_costs_nonzero,
         test_price_for,
         test_price_for_derived_cache_rates,
+        test_price_for_cache_read_overrides,
     ]
     for t in tests:
         t()

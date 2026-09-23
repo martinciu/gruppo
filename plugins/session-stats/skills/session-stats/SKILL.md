@@ -110,7 +110,8 @@ data with bullets, `*bold*`, or a fenced code block instead — and skip
   Public-rate numbers are useful as a relative guide, not as an invoice.
 - **Cache reads dominate.** Most sessions show cache reads as the largest token
   category. That's normal — prompt caching re-uses the system prompt and prior
-  turns at ~10% of base input price.
+  turns at ~10% of base input price (5% on Opus 5.5, 2.5% on Fable/Mythos
+  5.1).
 - **Subagent attribution.** Subagent costs are aggregated by model, not by the
   task they served. To map agent IDs to tasks, peek at the matching
   `agent-<id>.meta.json` files in the subagents directory.
