@@ -19,42 +19,57 @@ from datetime import datetime
 
 # Public Anthropic API rates, USD per million tokens (base input/output).
 # Verified against platform.claude.com/docs/en/about-claude/pricing on
-# 2026-08-05 — these drift; re-check when adding models.
+# 2026-09-23 — these drift; re-check when adding models.
 #
-# Cache rates are uniform multiples of base input across all models, so
-# they are derived, not listed.
+# Cache rates are multiples of base input, so they are derived, not
+# listed. Cache writes are uniform across all models; cache reads default
+# to MULT["cr"] but some models discount them further (Opus 5.5: 0.05x,
+# Fable/Mythos 5.1: 0.025x) — those rows carry their own multiplier.
 MULT = {"cr": 0.10, "cw5": 1.25, "cw1": 2.0}
 
-# (model-id prefix, input $/MTok, output $/MTok) — most-specific first,
-# first match wins. Keep legacy entries above their family umbrella.
+# (model-id prefix, input $/MTok, output $/MTok[, cache-read multiplier])
+# — most-specific first, first match wins. Keep legacy entries and point
+# releases above their family umbrella.
 BASE_PRICES = [
     ("claude-opus-4-1",    15.0, 75.0),  # legacy (deprecated)
     ("claude-opus-4-0",    15.0, 75.0),  # legacy (retired)
     ("claude-opus-4-2025", 15.0, 75.0),  # legacy dated (claude-opus-4-20250514)
+    ("claude-opus-5-5",     4.0, 20.0, 0.05),
+    ("claude-fable-5-1",  10.0, 50.0, 0.025),
+    ("claude-mythos-5-1", 10.0, 50.0, 0.025),
     ("claude-fable",  10.0, 50.0),
     ("claude-mythos", 10.0, 50.0),
     ("claude-opus",    5.0, 25.0),
+    ("claude-sonnet-5", 2.0, 10.0),
     ("claude-sonnet",  3.0, 15.0),
     ("claude-haiku",   1.0,  5.0),
 ]
 
 # Last-resort fallback for bare model strings ("sonnet" on background
-# rows): family keyword -> current family base rate. Insertion order is
-# the match order.
+# rows): family keyword -> the family's current model ID, resolved through
+# BASE_PRICES so the two tables can't drift. Insertion order is the match
+# order.
 FAMILY_FALLBACK = {
-    "fable":  (10.0, 50.0),
-    "mythos": (10.0, 50.0),
-    "opus":   ( 5.0, 25.0),
-    "sonnet": ( 3.0, 15.0),
-    "haiku":  ( 1.0,  5.0),
+    "fable":  "claude-fable-5-1",
+    "mythos": "claude-mythos-5-1",
+    "opus":   "claude-opus-5-5",
+    "sonnet": "claude-sonnet-5",
+    "haiku":  "claude-haiku-4-5",
 }
 
 
-def _rates(base_in, base_out):
+def _rates(base_in, base_out, cr_mult=MULT["cr"]):
     return {"in": base_in, "out": base_out,
-            "cr":  base_in * MULT["cr"],
+            "cr":  base_in * cr_mult,
             "cw5": base_in * MULT["cw5"],
             "cw1": base_in * MULT["cw1"]}
+
+
+def _match_prefix(model):
+    for prefix, *rates in BASE_PRICES:
+        if model.startswith(prefix):
+            return _rates(*rates)
+    return None
 
 
 def price_for(model):
@@ -65,12 +80,12 @@ def price_for(model):
     """
     if not model:
         return None
-    for prefix, base_in, base_out in BASE_PRICES:
-        if model.startswith(prefix):
-            return _rates(base_in, base_out)
-    for key, (base_in, base_out) in FAMILY_FALLBACK.items():
+    rates = _match_prefix(model)
+    if rates:
+        return rates
+    for key, current in FAMILY_FALLBACK.items():
         if key in model:
-            return _rates(base_in, base_out)
+            return _match_prefix(current)
     return None
 
 
